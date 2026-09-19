@@ -20,7 +20,9 @@
 - Anomaly detector interface: implemented and tested
 - Temporal intelligence: implemented and tested
 - Spatial intelligence: implemented and tested
-- Trajectory intelligence: next
+- Trajectory intelligence: implemented and tested
+- Intelligence layer: complete
+- Risk Engine: next
 
 ## Setup
 
