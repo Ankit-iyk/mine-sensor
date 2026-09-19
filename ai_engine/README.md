@@ -12,7 +12,9 @@
 - Tilt features: implemented and tested
 - Vibration features: implemented and tested
 - Temporal features: implemented and tested
-- Feature extractor: next
+- Feature extractor: implemented and tested
+- Module 2 feature engineering: complete
+- Ground Stability Fingerprint: next
 
 ## Setup
 
