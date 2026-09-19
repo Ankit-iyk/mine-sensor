@@ -23,7 +23,8 @@
 - Trajectory intelligence: implemented and tested
 - Intelligence layer: complete
 - Risk Engine: implemented and tested
-- Explainability: next
+- Explainability: implemented and tested
+- Master inference pipeline: next
 
 ## Setup
 
