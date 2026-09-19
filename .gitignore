@@ -1,4 +1,83 @@
+# ── Python ──────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Virtual Environments ─────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Testing ──────────────────────────────────────────
 .pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# ── IDE ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Node / Next.js ───────────────────────────────────
+node_modules/
+.next/
+out/
+.npm
+*.log
+
+# ── Environment / Secrets ────────────────────────────
+# Never commit actual .env files with credentials
+backend/.env
+simulator/.env
+.env.local
+.env.production
+dashboard/.env.local
+
+# ── Docker volumes ───────────────────────────────────
+emqx_data/
+emqx_log/
+postgres_data/
+
+# ── ML artifacts ─────────────────────────────────────
+*.pkl
 *.joblib
+*.h5
+*.onnx
+models/saved/
+
+# ── OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Next.js build info ───────────────────────────────
+tsconfig.tsbuildinfo
