@@ -14,7 +14,8 @@
 - Temporal features: implemented and tested
 - Feature extractor: implemented and tested
 - Module 2 feature engineering: complete
-- Ground Stability Fingerprint: next
+- Ground Stability Fingerprint: implemented and tested
+- Normal-behaviour training dataset: next
 
 ## Setup
 
