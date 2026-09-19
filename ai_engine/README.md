@@ -5,7 +5,9 @@
 - Branch: `ai-ml-development`
 - Package structure: scaffolded
 - Telemetry validation: implemented and tested
-- Filtering: next preprocessing module
+- Filtering: implemented and tested
+- Normalization: implemented and tested
+- Module 1 preprocessing: complete
 - Synthetic test dataset: pending
 
 ## Setup
