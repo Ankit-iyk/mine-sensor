@@ -19,12 +19,11 @@ DEFAULT_COUNT_PER_NODE = 200
 SMOOTHED_FIELDS = ["tilt_x", "tilt_y", "vibration"]
 
 FEATURE_COLUMNS = [
-    "tilt_magnitude", "tilt_deviation", "tilt_rate", "tilt_acceleration",
+    "tilt_magnitude", "tilt_deviation", "tilt_rate",
     "rolling_tilt_mean", "rolling_tilt_std",
     "vibration_intensity", "vibration_event_count", "vibration_frequency",
-    "vibration_rate", "rolling_vibration_mean", "rolling_vibration_std",
-    "five_min_mean", "fifteen_min_mean", "one_hour_mean",
-    "trend_slope", "rate_of_change",
+    "rolling_vibration_mean", "rolling_vibration_std",
+    "trend_slope",
 ]
 
 
