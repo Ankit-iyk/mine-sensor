@@ -17,7 +17,8 @@
 - Ground Stability Fingerprint: implemented and tested
 - Normal-behaviour training dataset: implemented and tested
 - Isolation Forest training and scoring: implemented and tested
-- Anomaly detector interface: next
+- Anomaly detector interface: implemented and tested
+- Temporal intelligence: next
 
 ## Setup
 
