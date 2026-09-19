@@ -3,7 +3,7 @@ import pytest
 from ai_engine.features.extractor import extract_features, reset_state
 
 
-def make_reading(ts, tilt_x=1.0, tilt_y=1.0, vibration=2.0, node_id="N01"):
+def make_reading(ts, tilt_x=1.0, tilt_y=1.0, vibration=0.02, node_id="N01"):
     return {
         "node_id": node_id, "zone_id": "Z01", "timestamp": ts,
         "ax": 0.0, "ay": 0.0, "az": 1.0,

@@ -24,7 +24,7 @@ def make_reading(
     ts="2026-09-19T09:00:00Z",
     tilt_x=1.2,
     tilt_y=1.0,
-    vibration=2.0,
+    vibration=0.02,
     node_id="N01",
 ):
     return {

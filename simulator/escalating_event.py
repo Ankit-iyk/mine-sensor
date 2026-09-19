@@ -26,6 +26,6 @@ def generate_escalating_event(node_id="N01", zone_id="Z01", count=50, onset_at=1
             "az": round(0.95 - step * 0.005, 3),
             "tilt_x": round(1.5 + step * 0.4, 2),
             "tilt_y": round(1.2 + step * 0.35, 2),
-            "vibration": round(2.0 + step * 0.8, 2),
+            "vibration": round(min(1.0, 0.03 + step * 0.015), 3),
         })
     return readings

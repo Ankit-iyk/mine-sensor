@@ -18,7 +18,7 @@ def generate_normal_sequence(node_id="N01", zone_id="Z01", count=50, start_time=
     readings = []
     base_tilt_x = 1.2
     base_tilt_y = 1.0
-    base_vibration = 2.0
+    base_vibration = 0.015
 
     for i in range(count):
         ts = (start_time + timedelta(seconds=i)).isoformat() + "Z"
@@ -31,6 +31,6 @@ def generate_normal_sequence(node_id="N01", zone_id="Z01", count=50, start_time=
             "az": round(random.uniform(0.95, 1.0), 3),
             "tilt_x": round(base_tilt_x + random.uniform(-0.3, 0.3), 2),
             "tilt_y": round(base_tilt_y + random.uniform(-0.3, 0.3), 2),
-            "vibration": round(base_vibration + random.uniform(-1.0, 1.0), 2),
+            "vibration": round(max(0.0, base_vibration + random.uniform(-0.014, 0.014)), 3),
         })
     return readings

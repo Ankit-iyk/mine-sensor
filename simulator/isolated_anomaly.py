@@ -28,6 +28,6 @@ def generate_isolated_anomaly(node_id="N01", zone_id="Z01", count=50, spike_at=3
             "az": 0.9,
             "tilt_x": round(8.0 + (i - spike_at) * 0.3, 2),
             "tilt_y": round(6.5 + (i - spike_at) * 0.2, 2),
-            "vibration": round(15.0 + (i - spike_at) * 0.5, 2),
+            "vibration": round(min(1.0, 0.35 + (i - spike_at) * 0.015), 3),
         })
     return readings

@@ -25,6 +25,6 @@ def generate_persistent_anomaly(node_id="N01", zone_id="Z01", count=50, onset_at
             "az": 0.92,
             "tilt_x": 5.5,
             "tilt_y": 4.8,
-            "vibration": 9.0,
+            "vibration": 0.35,
         })
     return readings

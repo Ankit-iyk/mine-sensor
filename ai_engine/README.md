@@ -26,6 +26,7 @@
 - Explainability: implemented and tested
 - Master inference pipeline: implemented and tested
 - AI/ML engine core: complete
+- Backend vibration calibration: normalized 0.0-1.0; model retrained and verified
 - End-to-end simulator integration: next
 
 ## Setup
