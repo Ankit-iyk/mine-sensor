@@ -16,7 +16,8 @@
 - Module 2 feature engineering: complete
 - Ground Stability Fingerprint: implemented and tested
 - Normal-behaviour training dataset: implemented and tested
-- Isolation Forest training: next
+- Isolation Forest training and scoring: implemented and tested
+- Anomaly detector interface: next
 
 ## Setup
 
