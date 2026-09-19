@@ -22,7 +22,8 @@
 - Spatial intelligence: implemented and tested
 - Trajectory intelligence: implemented and tested
 - Intelligence layer: complete
-- Risk Engine: next
+- Risk Engine: implemented and tested
+- Explainability: next
 
 ## Setup
 
