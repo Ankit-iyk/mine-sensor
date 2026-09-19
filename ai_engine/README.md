@@ -15,7 +15,8 @@
 - Feature extractor: implemented and tested
 - Module 2 feature engineering: complete
 - Ground Stability Fingerprint: implemented and tested
-- Normal-behaviour training dataset: next
+- Normal-behaviour training dataset: implemented and tested
+- Isolation Forest training: next
 
 ## Setup
 
