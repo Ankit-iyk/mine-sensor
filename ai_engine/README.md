@@ -5,8 +5,29 @@
 - Branch: `ai-ml-development`
 - Package structure: scaffolded
 - Telemetry validation: implemented and tested
-- Filtering: next preprocessing module
-- Synthetic test dataset: pending
+- Filtering: implemented and tested
+- Normalization: implemented and tested
+- Module 1 preprocessing: complete
+- Synthetic test dataset: implemented and tested in the top-level `simulator/` package
+- Tilt features: implemented and tested
+- Vibration features: implemented and tested
+- Temporal features: implemented and tested
+- Feature extractor: implemented and tested
+- Module 2 feature engineering: complete
+- Ground Stability Fingerprint: implemented and tested
+- Normal-behaviour training dataset: implemented and tested
+- Isolation Forest training and scoring: implemented and tested
+- Anomaly detector interface: implemented and tested
+- Temporal intelligence: implemented and tested
+- Spatial intelligence: implemented and tested
+- Trajectory intelligence: implemented and tested
+- Intelligence layer: complete
+- Risk Engine: implemented and tested
+- Explainability: implemented and tested
+- Master inference pipeline: implemented and tested
+- AI/ML engine core: complete
+- Backend vibration calibration: normalized 0.0-1.0; model retrained and verified
+- End-to-end simulator integration: next
 
 ## Setup
 
