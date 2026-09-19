@@ -24,7 +24,9 @@
 - Intelligence layer: complete
 - Risk Engine: implemented and tested
 - Explainability: implemented and tested
-- Master inference pipeline: next
+- Master inference pipeline: implemented and tested
+- AI/ML engine core: complete
+- End-to-end simulator integration: next
 
 ## Setup
 
