@@ -9,7 +9,8 @@
 - Normalization: implemented and tested
 - Module 1 preprocessing: complete
 - Synthetic test dataset: implemented and tested in the top-level `simulator/` package
-- Tilt features: next
+- Tilt features: implemented and tested
+- Vibration features: next
 
 ## Setup
 
