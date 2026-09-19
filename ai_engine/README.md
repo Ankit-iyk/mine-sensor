@@ -11,7 +11,8 @@
 - Synthetic test dataset: implemented and tested in the top-level `simulator/` package
 - Tilt features: implemented and tested
 - Vibration features: implemented and tested
-- Temporal features: next
+- Temporal features: implemented and tested
+- Feature extractor: next
 
 ## Setup
 
