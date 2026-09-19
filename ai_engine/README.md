@@ -19,7 +19,8 @@
 - Isolation Forest training and scoring: implemented and tested
 - Anomaly detector interface: implemented and tested
 - Temporal intelligence: implemented and tested
-- Spatial intelligence: next
+- Spatial intelligence: implemented and tested
+- Trajectory intelligence: next
 
 ## Setup
 
