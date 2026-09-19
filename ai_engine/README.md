@@ -10,7 +10,8 @@
 - Module 1 preprocessing: complete
 - Synthetic test dataset: implemented and tested in the top-level `simulator/` package
 - Tilt features: implemented and tested
-- Vibration features: next
+- Vibration features: implemented and tested
+- Temporal features: next
 
 ## Setup
 
