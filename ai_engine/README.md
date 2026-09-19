@@ -8,7 +8,8 @@
 - Filtering: implemented and tested
 - Normalization: implemented and tested
 - Module 1 preprocessing: complete
-- Synthetic test dataset: pending
+- Synthetic test dataset: implemented and tested in the top-level `simulator/` package
+- Tilt features: next
 
 ## Setup
 
