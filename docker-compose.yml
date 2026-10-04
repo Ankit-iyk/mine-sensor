@@ -1,0 +1,59 @@
+version: "3.8"
+
+# SUBSENSE — Infrastructure Services
+# Phase 4: EMQX + TimescaleDB
+
+services:
+
+  # ──────────────────────────────────────────────────
+  # EMQX — MQTT Broker
+  # Dashboard: http://localhost:18083  (admin / subsense_dev)
+  # MQTT:      localhost:1883
+  # ──────────────────────────────────────────────────
+  emqx:
+    image: emqx/emqx:5.7.0
+    container_name: subsense-emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "18083:18083"
+    environment:
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: subsense_dev
+      EMQX_ALLOW_ANONYMOUS: "true"
+      EMQX_LOG__CONSOLE_HANDLER__LEVEL: warning
+    volumes:
+      - emqx_data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────────
+  # TimescaleDB — PostgreSQL with time-series extensions
+  # Connection: postgresql://subsense:subsense_dev@localhost:5432/subsense
+  # ──────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: subsense-timescaledb
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: subsense
+      POSTGRES_USER: subsense
+      POSTGRES_PASSWORD: subsense_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subsense -d subsense"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  emqx_data:
+  postgres_data:

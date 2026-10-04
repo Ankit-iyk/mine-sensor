@@ -13,11 +13,19 @@ from ai_engine.anomaly.isolation_forest import (
 )
 from ai_engine.fingerprint.fingerprint import deviation_score
 
+try:
+    from app.ml.interface import AnomalyDetector
+except ModuleNotFoundError:
+    class AnomalyDetector:
+        """Fallback base for using ai_engine outside the backend package."""
+
+        pass
+
 # Backend-confirmed normalized vibration scale.
 _VIBRATION_SCALE_FACTOR = 1.0
 
 
-class AIEngineDetector:
+class AIEngineDetector(AnomalyDetector):
     """Implements predict(features), load(path), and the version property."""
 
     def __init__(self):
