@@ -168,10 +168,10 @@ def _evaluate(detector: AIEngineDetector) -> None:
         for scenario in EVALUATION_SCENARIOS
     }
 
-    for scenario_index, scenario_name in enumerate(EVALUATION_SCENARIOS):
+    for scenario_name in EVALUATION_SCENARIOS:
         node_id, zone_id = _evaluation_node(scenario_name)
         for seed in HELD_OUT_SEEDS:
-            _set_seed(seed + scenario_index)
+            _set_seed(seed)
             rows = _feature_dicts(
                 node_id=node_id,
                 zone_id=zone_id,
