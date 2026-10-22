@@ -11,7 +11,6 @@ from ai_engine.anomaly.isolation_forest import (
     load_model,
     score_sample,
 )
-from ai_engine.fingerprint.fingerprint import deviation_score
 
 try:
     from app.ml.interface import AnomalyDetector
@@ -46,21 +45,14 @@ class AIEngineDetector(AnomalyDetector):
         mapped = self._map_features(features)
         isolation_result = score_sample(self._model, mapped)
 
-        node_id = features.get("node_id")
-        if node_id:
-            deviation = deviation_score(
-                node_id,
-                tilt_magnitude=mapped["tilt_magnitude"],
-                vibration_value=mapped["vibration_intensity"],
-            )
-        else:
-            deviation = {"tilt_deviation": 0.0, "vibration_deviation": 0.0}
+        tilt_deviation = features.get("tilt_deviation", 0.0)
+        baseline_deviation = features.get("baseline_deviation", 0.0)
 
         anomaly_score = max(0.0, min(1.0, 0.5 - isolation_result["raw_score"]))
 
         if not isolation_result["is_anomalous"]:
             state = "NORMAL"
-        elif deviation["tilt_deviation"] < 3.0 and deviation["vibration_deviation"] < 3.0:
+        elif tilt_deviation < 3.0 and baseline_deviation < 3.0:
             state = "MICRO_ANOMALY"
         else:
             state = "ANOMALOUS"
