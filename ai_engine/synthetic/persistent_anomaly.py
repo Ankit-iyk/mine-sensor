@@ -5,7 +5,7 @@ Generates a sequence where a node becomes anomalous and STAYS anomalous
 
 from datetime import datetime, timedelta
 
-from simulator.normal import generate_normal_sequence
+from ai_engine.synthetic.normal import generate_normal_sequence
 
 
 def generate_persistent_anomaly(node_id="N01", zone_id="Z01", count=50, onset_at=20, start_time=None):

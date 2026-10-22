@@ -3,7 +3,7 @@ Generates simultaneous anomalies across MULTIPLE neighbouring nodes.
 Tests spatial correlation — should produce a HIGH regional_correlation score.
 """
 
-from simulator.escalating_event import generate_escalating_event
+from ai_engine.synthetic.escalating_event import generate_escalating_event
 
 
 def generate_regional_event(node_ids=("N01", "N02", "N03"), zone_id="Z01", count=50, onset_at=15):

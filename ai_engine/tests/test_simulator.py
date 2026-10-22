@@ -1,8 +1,8 @@
-from simulator.escalating_event import generate_escalating_event
-from simulator.isolated_anomaly import generate_isolated_anomaly
-from simulator.normal import generate_normal_sequence
-from simulator.persistent_anomaly import generate_persistent_anomaly
-from simulator.regional_event import generate_regional_event
+from ai_engine.synthetic.escalating_event import generate_escalating_event
+from ai_engine.synthetic.isolated_anomaly import generate_isolated_anomaly
+from ai_engine.synthetic.normal import generate_normal_sequence
+from ai_engine.synthetic.persistent_anomaly import generate_persistent_anomaly
+from ai_engine.synthetic.regional_event import generate_regional_event
 
 
 def test_normal_sequence_length_and_keys():

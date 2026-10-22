@@ -1,6 +1,6 @@
 """
 Adapter implementing the backend's AnomalyDetector interface (ml-contract),
-wrapping the ai_engine Isolation Forest and fingerprint scoring.
+wrapping the ai_engine Isolation Forest and backend deviation features.
 
 The backend vibration fields are normalized to 0.0-1.0, matching the
 calibrated simulator and model training data.
@@ -11,7 +11,6 @@ from ai_engine.anomaly.isolation_forest import (
     load_model,
     score_sample,
 )
-from ai_engine.fingerprint.fingerprint import deviation_score
 
 try:
     from app.ml.interface import AnomalyDetector
@@ -23,6 +22,8 @@ except ModuleNotFoundError:
 
 # Backend-confirmed normalized vibration scale.
 _VIBRATION_SCALE_FACTOR = 1.0
+# Held-out normal data's 99th percentile deviation is about 0.107 degrees.
+_DEVIATION_THRESHOLD = 0.11
 
 
 class AIEngineDetector(AnomalyDetector):
@@ -46,21 +47,14 @@ class AIEngineDetector(AnomalyDetector):
         mapped = self._map_features(features)
         isolation_result = score_sample(self._model, mapped)
 
-        node_id = features.get("node_id")
-        if node_id:
-            deviation = deviation_score(
-                node_id,
-                tilt_magnitude=mapped["tilt_magnitude"],
-                vibration_value=mapped["vibration_intensity"],
-            )
-        else:
-            deviation = {"tilt_deviation": 0.0, "vibration_deviation": 0.0}
+        tilt_deviation = features.get("tilt_deviation", 0.0)
+        baseline_deviation = features.get("baseline_deviation", 0.0)
 
         anomaly_score = max(0.0, min(1.0, 0.5 - isolation_result["raw_score"]))
 
         if not isolation_result["is_anomalous"]:
             state = "NORMAL"
-        elif deviation["tilt_deviation"] < 3.0 and deviation["vibration_deviation"] < 3.0:
+        elif tilt_deviation < _DEVIATION_THRESHOLD and baseline_deviation < _DEVIATION_THRESHOLD:
             state = "MICRO_ANOMALY"
         else:
             state = "ANOMALOUS"
