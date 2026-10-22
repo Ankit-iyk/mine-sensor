@@ -5,7 +5,7 @@ Used to test anomaly detection without triggering false spatial correlation.
 
 from datetime import datetime, timedelta
 
-from simulator.normal import generate_normal_sequence
+from ai_engine.synthetic.normal import generate_normal_sequence
 
 
 def generate_isolated_anomaly(node_id="N01", zone_id="Z01", count=50, spike_at=30, start_time=None):

@@ -12,7 +12,7 @@ from ai_engine.features.extractor import extract_features, reset_state
 from ai_engine.preprocessing.filtering import filter_readings, remove_duplicates
 from ai_engine.preprocessing.normalization import normalize
 from ai_engine.preprocessing.validation import validate
-from simulator.normal import generate_normal_sequence
+from ai_engine.synthetic.normal import generate_normal_sequence
 
 DEFAULT_NODES = ["N01", "N02", "N03", "N04", "N05"]
 DEFAULT_COUNT_PER_NODE = 200

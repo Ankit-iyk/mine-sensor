@@ -7,6 +7,7 @@ Instantiates the active AnomalyDetector implementation:
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 import structlog
@@ -14,13 +15,17 @@ import structlog
 from app.config import settings
 from app.ml.interface import AnomalyDetector
 from app.ml.mock_model import MockAnomalyDetector
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from ai_engine.adapter import AIEngineDetector
 
 logger = structlog.get_logger(__name__)
 
 _ACTIVE_DETECTOR: Optional[AnomalyDetector] = None
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL_PATH = _REPO_ROOT / "ai_engine" / "models" / "isolation_forest.joblib"
 
 

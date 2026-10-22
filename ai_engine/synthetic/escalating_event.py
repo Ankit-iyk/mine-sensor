@@ -5,7 +5,7 @@ Tests the temporal engine's ESCALATING state and trend_slope feature.
 
 from datetime import datetime, timedelta
 
-from simulator.normal import generate_normal_sequence
+from ai_engine.synthetic.normal import generate_normal_sequence
 
 
 def generate_escalating_event(node_id="N01", zone_id="Z01", count=50, onset_at=15, start_time=None):

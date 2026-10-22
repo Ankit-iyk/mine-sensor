@@ -3,9 +3,9 @@ Demo: runs each simulator scenario through the full AI pipeline
 and prints how risk evolves. This is the end-to-end proof.
 """
 
-from simulator.normal import generate_normal_sequence
-from simulator.isolated_anomaly import generate_isolated_anomaly
-from simulator.escalating_event import generate_escalating_event
+from ai_engine.synthetic.normal import generate_normal_sequence
+from ai_engine.synthetic.isolated_anomaly import generate_isolated_anomaly
+from ai_engine.synthetic.escalating_event import generate_escalating_event
 
 from ai_engine.pipeline.inference import analyze_telemetry, reset_pipeline_state
 from ai_engine.pipeline.build_training_data import build_normal_feature_dataset
