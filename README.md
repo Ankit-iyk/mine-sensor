@@ -1,267 +1,166 @@
 # SUBSENSE
 
-## Predictive Mine Subsidence Intelligence System
-
-A low-cost IoT-based mine stability monitoring platform using distributed ESP32 sensor nodes.
-
-> ⚠️ **Research Prototype** — NOT a certified mine-safety system.
-> Terminology used: *anomaly*, *developing instability*, *stability indicator*, *early-warning indicator*.
-
----
+SUBSENSE is a predictive mine-subsidence monitoring research prototype that
+collects sensor or simulator telemetry, extracts backend features, and
+combines anomaly detection with risk assessment and alerts. It is not a
+certified mine-safety system.
 
 ## Architecture
 
-```
-ESP32 Nodes → Wi-Fi → MQTT/EMQX → FastAPI Backend
-                                         │
-                              ┌──────────┼──────────┐
-                         Validation  Processing   Database
-                                         │
-                              Feature Extraction
-                                         │
-                                   ML Interface ← teammate's model
-                                         │
-                              Temporal / Spatial / Risk Engine
-                                         │
-                              WebSocket / REST API
-                                         │
-                              Next.js Dashboard
-```
+Sensors and simulator -> MQTT -> FastAPI backend -> signal processing and
+feature extraction -> AI engine (Isolation Forest and baseline deviation) ->
+risk engine and alerts -> WebSocket -> Next.js dashboard.
 
----
+## Hardware design
 
-## Quick Start
+![SUBSENSE sensor node hardware design (Cirkit Designer)](docs/images/hardware-design.jpg)
 
-### Prerequisites
+This is the circuit design for one sensor node.
 
-- Python 3.12+
-- Docker Desktop (for EMQX)
+| Component | Role |
+|---|---|
+| ESP32-S3-WROOM-1 development board | Microcontroller; reads sensors and publishes telemetry |
+| MPU6050 accelerometer/gyroscope module | Tilt and acceleration sensing over I2C |
+| SW-420-type vibration sensor module | Digital output for vibration events |
+| Piezo buzzer | Audible alert |
+| Red, yellow and green LEDs, each with a 220 ohm resistor | SAFE / WARNING / DANGER status indication |
 
-### 1 — Clone and set up Python environment
+Sensor axes `ax`, `ay` and `az` map to backend telemetry fields `accel_x`,
+`accel_y` and `accel_z`; tilt and vibration use `tilt_x`, `tilt_y` and
+`vibration` in the backend and AI engine.
+
+The circuit was designed and simulated in Cirkit Designer; this repository
+does not contain a `firmware/` folder.
+
+## AI engine
+
+`ai_engine/adapter.py` implements the backend `AnomalyDetector` interface and
+maps backend features to the Isolation Forest inputs, including backend
+baseline deviation. `backend/app/ml/loader.py` loads the trained model from
+`ai_engine/models/isolation_forest.joblib` and falls back to the mock detector
+if the model is missing or cannot be loaded.
+
+## Results
+
+Held-out evaluation used seeds 101–103, with 196 feature readings per run.
+
+| Scenario | Result |
+|---|---|
+| normal | About 93% NORMAL |
+| gradual_tilt | About 97% ANOMALOUS |
+| multi_node_event | About 97% ANOMALOUS |
+| vibration_event | About 59% NORMAL |
+| persistent_anomaly | About 100% MICRO_ANOMALY |
+
+Tests: **90 AI-engine + 108 backend, all passing.**
+
+## Known limitations
+
+- Persistent anomalies and isolated vibration events are only weakly detected.
+- About 7% of normal readings receive a false `MICRO_ANOMALY` label.
+- The model is trained on simulated data only, not real ESP32 readings.
+- The final gradual-tilt risk is WARNING (score 45), not DANGER.
+- The full Docker + MQTT + dashboard chain was not run end to end.
+
+## How to run
+
+### Setup
+
+Prerequisites: Python 3.12+ and Docker Desktop for the broker and database
+services.
+
+From the repository root, create and activate a virtual environment and
+install backend dependencies:
 
 ```powershell
-cd subsense
-
-# Create virtual environment
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-
-# Install backend dependencies
-pip install -r backend/requirements.txt
+python -m pip install -r backend\requirements.txt
 ```
 
-### 2 — Copy environment file
+Create the backend environment file:
 
 ```powershell
 copy backend\.env.example backend\.env
 ```
 
-### 3 — Start EMQX broker
+### Docker, backend, simulator, and dashboard
+
+From the repository root, start EMQX and TimescaleDB:
 
 ```powershell
 docker compose up -d
 ```
 
-Wait ~15 seconds for EMQX to initialise.
+Wait for the services to initialize. EMQX dashboard: http://localhost:18083.
 
-Verify: http://localhost:18083 (admin / subsense_dev)
-
-### 4 — Start the FastAPI backend
+In a new terminal, activate the virtual environment and start the backend:
 
 ```powershell
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+..\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Expected output:
-```
-subsense_starting  version=0.1.0  mqtt_host=localhost  mqtt_port=1883
-mqtt_connected     topic=mine/+/+/telemetry  qos=1
-```
+Verify the health endpoint at http://localhost:8000/api/health.
 
-### 5 — Verify health endpoint
+In another terminal, run the simulator from its package root:
 
 ```powershell
-curl http://localhost:8000/api/health
-```
-
-Expected:
-```json
-{
-  "status": "ok",
-  "service": "subsense-backend",
-  "version": "0.1.0",
-  "mqtt_connected": true
-}
-```
-
-### 6 — Run the simulator
-
-Open a new terminal:
-
-```powershell
-# Activate venv first
-.venv\Scripts\Activate.ps1
-
-# Run normal scenario
+cd simulator
 python -m simulator.main --scenario normal
+```
 
-# Run gradual tilt for 2 minutes
+Other supported simulator examples:
+
+```powershell
 python -m simulator.main --scenario gradual_tilt --duration 120
-
-# List all scenarios
-python -m simulator.main --list
-
-# Dry run (no MQTT needed — great for testing)
 python -m simulator.main --scenario sensor_failure --dry-run
 ```
 
-### 7 — Watch telemetry arrive in the backend
-
-The FastAPI terminal should show:
-```
-telemetry_received  node_id=N01  zone_id=Z01  tilt_x=1.023  tilt_y=0.804  vibration=0
-telemetry_received  node_id=N02  zone_id=Z01  tilt_x=0.853  tilt_y=1.102  vibration=0
-...
-```
-
----
-
-## Running tests
+The dashboard is a separate Next.js application. In another terminal:
 
 ```powershell
-cd backend
-python -m pytest -v
+cd dashboard
+npm install
+npm run dev
 ```
 
-Expected:
-```
-tests/test_health.py::test_health_returns_200     PASSED
-tests/test_health.py::test_health_response_schema PASSED
-tests/test_schemas.py::test_valid_payload_accepted PASSED
-... (all pass)
-```
+Open http://localhost:3000.
 
-## AI engine, training, and in-process demo
+### Docker-free demo and retraining
 
-The backend loads `ai_engine/models/isolation_forest.joblib` through
-`backend/app/ml/loader.py` and the `AIEngineDetector` adapter in
-`ai_engine/adapter.py`. The adapter maps backend feature vectors into the
-Isolation Forest's model columns. The model artifact is tracked in Git, so a
-fresh clone can load the AI detector without a separate training step.
-
-Install backend dependencies from the repository root:
+From the repository root, run the in-process demo without Docker, MQTT, or
+database writes:
 
 ```powershell
-python -m pip install -r backend\requirements.txt
+python scripts/demo_inprocess.py
 ```
 
-Retrain on normal simulator readings processed by the backend feature pipeline
-(no MQTT or database required):
+Retrain the model using normal simulator data processed through the backend
+feature pipeline:
 
 ```powershell
 python -m ai_engine.training.train_from_backend
 ```
 
-Run AI engine tests from the repository root:
+### Tests
+
+Run the AI-engine tests from the repository root:
 
 ```powershell
 python -m pytest ai_engine/tests -q
 ```
 
-Run backend tests from `backend/`:
+Run the backend tests from `backend/`:
 
 ```powershell
 cd backend
 python -m pytest -q
-cd ..
 ```
 
-Run the Docker-free in-process demo from the repository root:
+## Branches and team
 
-```powershell
-python scripts\demo_inprocess.py
-```
-
-It prints detector state fractions for the five simulator scenarios and the
-final gradual-tilt risk explanation.
-
----
-
-## API Documentation
-
-FastAPI auto-generates docs:
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc:      http://localhost:8000/redoc
-
----
-
-## Repository Structure
-
-```
-subsense/
-├── backend/                 FastAPI application
-│   ├── app/
-│   │   ├── main.py          App factory + lifespan
-│   │   ├── config.py        Settings (pydantic-settings)
-│   │   ├── logging_config.py
-│   │   ├── api/routes/
-│   │   │   └── health.py    GET /api/health
-│   │   └── ingestion/
-│   │       ├── schemas.py   TelemetryReading (Pydantic)
-│   │       ├── mqtt_client.py
-│   │       └── message_handler.py
-│   ├── tests/
-│   ├── requirements.txt
-│   └── .env.example
-│
-├── simulator/               ESP32 simulator
-│   ├── main.py              CLI entry point
-│   ├── node.py              SensorNode + 6 scenarios
-│   ├── scenarios.py         Scenario registry
-│   ├── publisher.py         MQTT publish logic
-│   └── config.py
-│
-├── ml-contract/             Interface contract for ML teammate
-│   └── README.md
-│
-├── frontend/                (Phase 16 — not yet built)
-├── docker-compose.yml       EMQX broker
-└── .gitignore
-```
-
----
-
-## Development Phases
-
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1 | ✅ Done | Backend skeleton, config, health endpoint |
-| 2 | ✅ Done | Sensor simulator (6 scenarios, 6 nodes) |
-| 3 | ✅ Done | MQTT ingestion + Pydantic validation |
-| 4 | 🔲 Next | PostgreSQL + TimescaleDB |
-| 5 | 🔲      | Signal processing (Kalman, rolling stats) |
-| 6 | 🔲      | Feature extraction pipeline |
-| 7 | 🔲      | Ground Stability Fingerprint |
-| 8 | 🔲      | ML anomaly detection interface |
-| 9 | 🔲      | Precursor Pattern Engine |
-| 10 | 🔲     | Spatial Correlation Engine |
-| 11 | 🔲     | Risk Engine |
-| 12 | 🔲     | Risk Trajectory |
-| 13 | 🔲     | Explainable Alert Engine |
-| 14–15 | 🔲  | REST API + WebSockets |
-| 16–18 | 🔲  | Next.js Frontend |
-| 19–20 | 🔲  | Testing + Multi-node simulation |
-
----
-
-## Common Errors
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `Cannot connect to EMQX` | Broker not running | `docker compose up -d` |
-| `ModuleNotFoundError: app` | Wrong working directory | Run from `backend/` |
-| `ModuleNotFoundError: simulator` | Wrong working directory | Run from `subsense/` root |
-| `paho.mqtt.reasoncodes` import error | paho-mqtt < 2.0 | `pip install paho-mqtt>=2.1.0` |
-| `asyncio_mode` warning in pytest | Missing pytest.ini | Already included in `backend/pytest.ini` |
+- `ai_engine/` is the AI/ML layer.
+- `backend/`, `dashboard/` and `simulator/` are the platform components.
+- `ai-ml-development` is the submission branch.
