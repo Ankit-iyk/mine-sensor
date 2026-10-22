@@ -76,7 +76,9 @@ class AlertEngine:
         self,
         risk: RiskAssessment,
         affected_nodes: Optional[list[str]] = None,
+        persist_to_db: Optional[bool] = None,
     ) -> Optional[AlertEvent]:
+        should_persist = self.persist_to_db if persist_to_db is None else persist_to_db
         node_id = risk.node_id
         current_state = risk.state
 
@@ -124,7 +126,7 @@ class AlertEngine:
                 )
 
                 # Persist incident to DB if not already open
-                if not tracker["has_active_incident"] and self.persist_to_db:
+                if not tracker["has_active_incident"] and should_persist:
                     create_incident_safe(
                         node_id=node_id,
                         zone_id=risk.zone_id,
@@ -156,7 +158,7 @@ class AlertEngine:
         # ── 2. Auto-Resolution (Persistent SAFE) ────────────
         elif current_state == "SAFE":
             if tracker["has_active_incident"] and tracker["consecutive_count"] >= self.SAFE_RESOLUTION_THRESHOLD:
-                if self.persist_to_db:
+                if should_persist:
                     resolve_incident_safe(node_id)
                 tracker["has_active_incident"] = False
                 logger.info("incident_auto_resolved", node_id=node_id)

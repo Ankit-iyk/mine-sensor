@@ -176,6 +176,7 @@ class ProcessingPipeline:
         alert_event = alert_engine.process_risk(
             risk=risk_assessment,
             affected_nodes=spatial_assessment.affected_neighbors or None,
+            persist_to_db=self.persist_to_db,
         )
 
         # ── 10. Persist to Database ──────────────────

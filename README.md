@@ -131,7 +131,7 @@ telemetry_received  node_id=N02  zone_id=Z01  tilt_x=0.853  tilt_y=1.102  vibrat
 
 ```powershell
 cd backend
-pytest -v
+python -m pytest -v
 ```
 
 Expected:
@@ -141,6 +141,50 @@ tests/test_health.py::test_health_response_schema PASSED
 tests/test_schemas.py::test_valid_payload_accepted PASSED
 ... (all pass)
 ```
+
+## AI engine, training, and in-process demo
+
+The backend loads `ai_engine/models/isolation_forest.joblib` through
+`backend/app/ml/loader.py` and the `AIEngineDetector` adapter in
+`ai_engine/adapter.py`. The adapter maps backend feature vectors into the
+Isolation Forest's model columns. The model artifact is tracked in Git, so a
+fresh clone can load the AI detector without a separate training step.
+
+Install backend dependencies from the repository root:
+
+```powershell
+python -m pip install -r backend\requirements.txt
+```
+
+Retrain on normal simulator readings processed by the backend feature pipeline
+(no MQTT or database required):
+
+```powershell
+python -m ai_engine.training.train_from_backend
+```
+
+Run AI engine tests from the repository root:
+
+```powershell
+python -m pytest ai_engine/tests -q
+```
+
+Run backend tests from `backend/`:
+
+```powershell
+cd backend
+python -m pytest -q
+cd ..
+```
+
+Run the Docker-free in-process demo from the repository root:
+
+```powershell
+python scripts\demo_inprocess.py
+```
+
+It prints detector state fractions for the five simulator scenarios and the
+final gradual-tilt risk explanation.
 
 ---
 

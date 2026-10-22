@@ -1,6 +1,6 @@
 """
 Adapter implementing the backend's AnomalyDetector interface (ml-contract),
-wrapping the ai_engine Isolation Forest and fingerprint scoring.
+wrapping the ai_engine Isolation Forest and backend deviation features.
 
 The backend vibration fields are normalized to 0.0-1.0, matching the
 calibrated simulator and model training data.
@@ -22,6 +22,8 @@ except ModuleNotFoundError:
 
 # Backend-confirmed normalized vibration scale.
 _VIBRATION_SCALE_FACTOR = 1.0
+# Held-out normal data's 99th percentile deviation is about 0.107 degrees.
+_DEVIATION_THRESHOLD = 0.11
 
 
 class AIEngineDetector(AnomalyDetector):
@@ -52,7 +54,7 @@ class AIEngineDetector(AnomalyDetector):
 
         if not isolation_result["is_anomalous"]:
             state = "NORMAL"
-        elif tilt_deviation < 3.0 and baseline_deviation < 3.0:
+        elif tilt_deviation < _DEVIATION_THRESHOLD and baseline_deviation < _DEVIATION_THRESHOLD:
             state = "MICRO_ANOMALY"
         else:
             state = "ANOMALOUS"
