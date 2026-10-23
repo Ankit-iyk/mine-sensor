@@ -95,7 +95,7 @@ class SimulatorPublisher:
         topic = (
             f"{sim_settings.mqtt_topic_prefix}/{zone_id}/{node_id}/telemetry"
         )
-        payload = json.dumps(reading, default=str)
+        payload = json.dumps({**reading, "source": "simulator"}, default=str)
 
         result = self._client.publish(topic, payload, qos=1)
         if result.rc != mqtt.MQTT_ERR_SUCCESS:

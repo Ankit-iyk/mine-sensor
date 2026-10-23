@@ -1,6 +1,9 @@
 import { NodeStatus } from './node';
 
 export interface SystemStatus {
+  mode: 'LIVE' | 'SIMULATED' | 'OFFLINE';
+  last_hardware_seen: string | null;
+  last_simulator_seen: string | null;
   overall_mine_status: NodeStatus;
   active_nodes: number;
   total_nodes: number;

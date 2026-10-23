@@ -59,7 +59,7 @@ export function LiveSensorPanel({
               margin: 0,
             }}
           >
-            LIVE SENSOR DATA
+            SENSOR TELEMETRY
           </h2>
         </div>
 

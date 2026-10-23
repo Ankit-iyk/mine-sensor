@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Activity, Radio, Database, Server, RefreshCw, AlertTriangle, RadioTower, Zap } from 'lucide-react';
+import { Activity, Radio, Database, Server, RefreshCw, RadioTower, Zap } from 'lucide-react';
 import { SystemStatus } from '@/types/system';
 
 interface HeaderProps {
@@ -24,6 +24,11 @@ export function Header({
   const isApiOnline = systemStatus.backend_status === 'ONLINE';
   const isMqttConnected = systemStatus.mqtt_status === 'CONNECTED';
   const isDbHealthy = systemStatus.db_status === 'HEALTHY';
+  const modeStyle = {
+    LIVE: { background: 'rgba(16, 185, 129, 0.14)', border: 'rgba(16, 185, 129, 0.4)', color: '#10b981', dot: '#10b981' },
+    SIMULATED: { background: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.4)', color: '#fbbf24', dot: '#f59e0b' },
+    OFFLINE: { background: 'rgba(148, 163, 184, 0.14)', border: 'rgba(148, 163, 184, 0.4)', color: '#cbd5e1', dot: '#94a3b8' },
+  }[systemStatus.mode];
 
   return (
     <header
@@ -105,56 +110,26 @@ export function Header({
               {isApiOnline ? 'SYSTEM ONLINE' : 'SYSTEM DEGRADED'}
             </span>
 
-            {/* LIVE vs DEMO Mode Pill */}
-            {isDemoMode ? (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '3px 9px',
-                  borderRadius: 'var(--radius-sm, 4px)',
-                  backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                  border: '1px solid rgba(168, 85, 247, 0.45)',
-                  color: '#c084fc',
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                }}
-                title="Mock telemetry data is currently active for demonstration"
-              >
-                <AlertTriangle size={11} />
-                DEMO MODE
-              </span>
-            ) : (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '3px 9px',
-                  borderRadius: 'var(--radius-sm, 4px)',
-                  backgroundColor: 'rgba(6, 182, 212, 0.15)',
-                  border: '1px solid rgba(6, 182, 212, 0.45)',
-                  color: '#38bdf8',
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                }}
-                title="Connected to live FastAPI backend and sensor stream"
-              >
-                <span
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: '#38bdf8',
-                    boxShadow: '0 0 6px #38bdf8',
-                  }}
-                />
-                LIVE MODE
-              </span>
-            )}
+            <span
+              aria-label={`Telemetry mode ${systemStatus.mode}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 9px',
+                borderRadius: 'var(--radius-sm, 4px)',
+                backgroundColor: modeStyle.background,
+                border: `1px solid ${modeStyle.border}`,
+                color: modeStyle.color,
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+              title={`Telemetry origin reported by backend: ${systemStatus.mode}`}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: modeStyle.dot }} />
+              {systemStatus.mode}
+            </span>
           </div>
 
           <p
@@ -291,7 +266,7 @@ export function Header({
               ? 'WS: CONNECTED'
               : wsStatus === 'connecting'
               ? 'WS: CONNECTING'
-              : 'LIVE STREAM DISCONNECTED'}
+              : 'ALERT STREAM DISCONNECTED'}
           </div>
         )}
 
@@ -307,10 +282,10 @@ export function Header({
               borderColor: isDemoMode ? 'rgba(168, 85, 247, 0.5)' : 'rgba(6, 182, 212, 0.5)',
               color: isDemoMode ? '#e9d5ff' : '#bae6fd',
             }}
-            title={isDemoMode ? 'Switch to Live FastAPI Backend' : 'Switch to Demo Mock Data'}
+            title={isDemoMode ? 'Return to backend data' : 'Switch to mock data'}
           >
             <Zap size={12} color={isDemoMode ? '#c084fc' : '#38bdf8'} />
-            {isDemoMode ? 'SWITCH TO LIVE' : 'SWITCH TO DEMO'}
+            {isDemoMode ? 'USE BACKEND DATA' : 'USE MOCK DATA'}
           </button>
         )}
 

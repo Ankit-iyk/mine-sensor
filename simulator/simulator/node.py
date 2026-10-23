@@ -180,6 +180,7 @@ class SensorNode:
             # All-zero accelerometer (sensor disconnect)
             return {
                 "schema_version": "1.0",
+                "source": "simulator",
                 "node_id": self.node_id,
                 "zone_id": self.zone_id,
                 "timestamp": _utc_now(),
@@ -202,6 +203,7 @@ class SensorNode:
             return {
                 "schema_version": "1.0",
                 "node_id": self.node_id,
+                "source": "simulator",
                 "zone_id": self.zone_id,
                 "timestamp": _utc_now(),
                 "accel_x": 0.02, "accel_y": 0.04, "accel_z": 9.78,
@@ -215,6 +217,7 @@ class SensorNode:
             return {
                 "schema_version": "1.0",
                 "node_id": self.node_id,
+                "source": "simulator",
                 # zone_id intentionally omitted
                 "timestamp": _utc_now(),
                 "accel_x": 0.02, "accel_y": 0.04, "accel_z": 9.78,
@@ -247,6 +250,7 @@ class SensorNode:
 
         return {
             "schema_version": "1.0",
+            "source": "simulator",
             "node_id": self.node_id,
             "zone_id": self.zone_id,
             "timestamp": _utc_now(),

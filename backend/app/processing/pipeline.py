@@ -83,6 +83,9 @@ class ProcessingPipeline:
         Process a single validated sensor reading through the full intelligence stack.
         Returns None until the rolling window has enough samples.
         """
+        from app.ingestion.source_tracker import telemetry_source_tracker
+        telemetry_source_tracker.record(reading.source)
+
         tilt_filter, node_buffer, baseline_tracker = self._get_or_create_node_state(reading.node_id)
 
         # ── 1. Kalman Filtering ──────────────────────

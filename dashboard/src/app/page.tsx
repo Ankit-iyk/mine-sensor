@@ -50,6 +50,25 @@ export default function DashboardPage() {
         onRefresh={refreshData}
       />
 
+      {isDemoMode && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: '20px',
+            padding: '14px 18px',
+            border: '2px solid #ef4444',
+            borderRadius: '8px',
+            background: 'rgba(127, 29, 29, 0.92)',
+            color: '#fff',
+            fontWeight: 900,
+            letterSpacing: '0.06em',
+            textAlign: 'center',
+          }}
+        >
+          MOCK DATA - NOT FROM SENSORS
+        </div>
+      )}
+
       {/* 2. Overview Summary Cards (Mine Status, Active Nodes, Warnings, Incidents, System Health) */}
       <SummaryCards systemStatus={systemStatus} />
 

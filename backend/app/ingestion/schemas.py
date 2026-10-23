@@ -19,7 +19,7 @@ Design decisions
 """
 
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -45,6 +45,10 @@ class TelemetryReading(BaseModel):
     schema_version: str = Field(
         default="1.0",
         description="Payload schema version for forward compatibility.",
+    )
+    source: Literal["hardware", "simulator", "unknown"] = Field(
+        default="unknown",
+        description="Telemetry origin. Missing source is treated as unknown.",
     )
     node_id: str = Field(
         ...,

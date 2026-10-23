@@ -60,21 +60,55 @@ export interface UseDashboardDataReturn {
   toggleDemoMode: () => void;
 }
 
-export function useDashboardData(): UseDashboardDataReturn {
-  // Default to Live Mode unless NEXT_PUBLIC_DEMO_MODE === 'true'
-  const initialDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(initialDemo);
+const EMPTY_NODE: MineNode = {
+  node_id: 'NO DATA',
+  zone_id: '--',
+  status: 'UNKNOWN',
+  risk_score: 0,
+  trend: 'UNKNOWN',
+  position: { x: 50, y: 50 },
+  tilt_x: 0,
+  tilt_y: 0,
+  vibration: 0,
+  anomaly_score: 0,
+  last_updated: '--',
+};
 
-  const [systemStatus, setSystemStatus] = useState<SystemStatus>(() => ({
-    ...DEMO_SYSTEM_STATUS,
-    is_demo_mode: initialDemo,
-  }));
-  const [nodes, setNodes] = useState<Record<string, MineNode>>(DEMO_NODES);
+const EMPTY_EXPLANATION: AlertExplanation = {
+  node_id: '',
+  risk_score: 0,
+  trend: 'UNKNOWN',
+  status: 'UNKNOWN',
+  title: 'No risk assessment available',
+  reasons: [],
+};
+
+const OFFLINE_SYSTEM_STATUS: SystemStatus = {
+  mode: 'OFFLINE',
+  last_hardware_seen: null,
+  last_simulator_seen: null,
+  overall_mine_status: 'UNKNOWN',
+  active_nodes: 0,
+  total_nodes: 0,
+  warning_nodes: 0,
+  active_incidents: 0,
+  system_health_percent: 0,
+  mqtt_status: 'DISCONNECTED',
+  backend_status: 'OFFLINE',
+  db_status: 'OFFLINE',
+  is_demo_mode: false,
+  last_updated: '',
+};
+
+export function useDashboardData(): UseDashboardDataReturn {
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus>(OFFLINE_SYSTEM_STATUS);
+  const [nodes, setNodes] = useState<Record<string, MineNode>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string>('N05');
-  const [incidents, setIncidents] = useState<Incident[]>(initialDemo ? DEMO_INCIDENTS : []);
-  const [riskTrajectory, setRiskTrajectory] = useState<RiskPoint[]>(DEMO_RISK_TRAJECTORIES.N05);
-  const [explanation, setExplanation] = useState<AlertExplanation>(DEMO_EXPLANATIONS.N05);
-  const [currentTime, setCurrentTime] = useState<string>('10:32:41');
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [riskTrajectory, setRiskTrajectory] = useState<RiskPoint[]>([]);
+  const [explanation, setExplanation] = useState<AlertExplanation>(EMPTY_EXPLANATION);
+  const [currentTime, setCurrentTime] = useState<string>('');
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
 
   const wsClientRef = useRef<SubsenseWebSocketClient | null>(null);
@@ -96,44 +130,81 @@ export function useDashboardData(): UseDashboardDataReturn {
   // 2. Fetch / Sync Data
   const refreshData = useCallback(async () => {
     if (isDemoMode) {
-      setSystemStatus({
-        ...DEMO_SYSTEM_STATUS,
-        last_updated: currentTime,
-        is_demo_mode: true,
-      });
       setNodes(DEMO_NODES);
       setIncidents(DEMO_INCIDENTS);
       setRiskTrajectory(DEMO_RISK_TRAJECTORIES[selectedNodeId] || DEMO_RISK_TRAJECTORIES.N05);
       setExplanation(DEMO_EXPLANATIONS[selectedNodeId] || DEFAULT_EXPLANATION);
+      try {
+        const response = await getSystemStatus(false);
+        setSystemStatus({
+          ...DEMO_SYSTEM_STATUS,
+          mode: response.data.mode,
+          last_hardware_seen: response.data.last_hardware_seen,
+          last_simulator_seen: response.data.last_simulator_seen,
+          last_updated: currentTime,
+          is_demo_mode: true,
+        });
+      } catch (error) {
+        console.error('Failed to refresh backend telemetry mode', error);
+        setSystemStatus({
+          ...DEMO_SYSTEM_STATUS,
+          mode: 'OFFLINE',
+          last_hardware_seen: null,
+          last_simulator_seen: null,
+          last_updated: currentTime,
+          is_demo_mode: true,
+        });
+      }
+      return;
+    }
+
+    let backendStatus: SystemStatus;
+    try {
+      const statusResponse = await getSystemStatus(false);
+      backendStatus = statusResponse.data;
+      setSystemStatus({ ...backendStatus, last_updated: currentTime });
+    } catch (error) {
+      console.error('Failed to read telemetry mode from backend', error);
+      setSystemStatus((status) => ({
+        ...status,
+        mode: 'OFFLINE',
+        backend_status: 'OFFLINE',
+        last_updated: currentTime,
+      }));
       return;
     }
 
     try {
-      const [sysRes, nodesRes, incRes, riskRes, expRes] = await Promise.all([
-        getSystemStatus(false),
+      const [nodesRes, incRes, riskRes, expRes] = await Promise.all([
         getNodes(false),
         getIncidents(false),
         getRisks(selectedNodeId, false),
         getAlertExplanation(selectedNodeId, false),
       ]);
 
-      setSystemStatus(sysRes.data);
-
-      if (nodesRes.data && nodesRes.data.length > 0) {
-        const nodeMap: Record<string, MineNode> = {};
-        nodesRes.data.forEach((n) => {
-          nodeMap[n.node_id] = n;
-        });
-        setNodes(nodeMap);
+      const nodeMap = Object.fromEntries(nodesRes.data.map((node) => [node.node_id, node]));
+      setNodes(nodeMap);
+      const warningNodes = nodesRes.data.filter((node) => node.status === 'WARNING').length;
+      const activeIncidents = incRes.data.filter((incident) => incident.status === 'ACTIVE').length;
+      const currentNode = nodesRes.data.find((node) => node.node_id === selectedNodeId);
+      const highestRiskNode = [...nodesRes.data].sort((a, b) => b.risk_score - a.risk_score)[0];
+      setSystemStatus({
+        ...backendStatus,
+        active_nodes: nodesRes.data.length,
+        total_nodes: nodesRes.data.length,
+        warning_nodes: warningNodes,
+        active_incidents: activeIncidents,
+        overall_mine_status: highestRiskNode?.status ?? 'UNKNOWN',
+        last_updated: currentTime,
+      });
+      if (!currentNode && nodesRes.data.length > 0) {
+        setSelectedNodeId(nodesRes.data[0].node_id);
       }
-
       setIncidents(incRes.data);
-      if (riskRes.data && riskRes.data.length > 0) {
-        setRiskTrajectory(riskRes.data);
-      }
+      setRiskTrajectory(riskRes.data);
       setExplanation(expRes.data);
-    } catch {
-      // Keep existing data on transient network error
+    } catch (error) {
+      console.error('Failed to refresh backend sensor and risk data', error);
     }
   }, [isDemoMode, selectedNodeId, currentTime]);
 
@@ -212,7 +283,10 @@ export function useDashboardData(): UseDashboardDataReturn {
             {
               timestamp: alert.timestamp ? alert.timestamp.split('T')[1]?.substring(0, 8) || 'NOW' : 'NOW',
               risk_score: Math.round(alert.risk_score),
-              status: alert.state as NodeStatus,
+              status:
+                alert.state === 'SAFE' || alert.state === 'WARNING' || alert.state === 'DANGER'
+                  ? alert.state
+                  : undefined,
             },
           ]);
 
@@ -220,13 +294,13 @@ export function useDashboardData(): UseDashboardDataReturn {
             setExplanation((prev) => ({
               ...prev,
               risk_score: Math.round(alert.risk_score),
-              status: alert.state,
+              status: alert.state || prev.status,
               trend: 'ESCALATING',
-              reasons: [alert.reason, ...prev.reasons.slice(0, 3)],
+              reasons: alert.reason ? [alert.reason, ...prev.reasons.slice(0, 3)] : prev.reasons,
             }));
           }
         }
-      } else if (event.event === 'risk_update') {
+      } else if ('event' in event && event.event === 'risk_update') {
         const targetNodeId = event.node_id;
         setNodes((prev) => {
           const existing = prev[targetNodeId];
@@ -237,7 +311,13 @@ export function useDashboardData(): UseDashboardDataReturn {
               ...existing,
               status: (event.state as NodeStatus) || existing.status,
               risk_score: Math.round(event.risk_score),
-              trend: event.trend || existing.trend,
+              trend:
+                event.trend === 'ESCALATING' ||
+                event.trend === 'DECREASING' ||
+                event.trend === 'PERSISTENT' ||
+                event.trend === 'STABLE'
+                  ? event.trend
+                  : existing.trend,
             },
           };
         });
@@ -259,8 +339,8 @@ export function useDashboardData(): UseDashboardDataReturn {
 
   // Current selected node
   const selectedNode = useMemo(() => {
-    return nodes[selectedNodeId] || DEMO_NODES[selectedNodeId] || DEMO_NODES.N05;
-  }, [nodes, selectedNodeId]);
+    return nodes[selectedNodeId] || (isDemoMode ? DEMO_NODES[selectedNodeId] || DEMO_NODES.N05 : EMPTY_NODE);
+  }, [isDemoMode, nodes, selectedNodeId]);
 
   // Selected node telemetry
   const selectedTelemetry: Telemetry = useMemo(() => {
@@ -273,9 +353,9 @@ export function useDashboardData(): UseDashboardDataReturn {
       tilt_magnitude: Number(Math.hypot(selectedNode.tilt_x, selectedNode.tilt_y).toFixed(2)),
       vibration: selectedNode.vibration,
       anomaly: selectedNode.anomaly_score,
-      accel_x: 0.02,
-      accel_y: 0.04,
-      accel_z: 9.78,
+      accel_x: undefined,
+      accel_y: undefined,
+      accel_z: undefined,
     };
   }, [selectedNode, currentTime]);
 

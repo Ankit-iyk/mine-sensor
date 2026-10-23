@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict
 
 from app.db.session import DbSession
 from app.db.repositories import readings as readings_repo
+from app.db.repositories.sensor_readings import save_reading_safe
+from app.ingestion.schemas import TelemetryReading
+from app.ingestion.source_tracker import telemetry_source_tracker
+from app.processing.pipeline import pipeline
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 
@@ -53,7 +57,24 @@ class CountResponse(BaseModel):
     count: int
 
 
+class TelemetryIngestResponse(BaseModel):
+    accepted: bool
+    processed: bool
+
+
 # ── Route Handlers ───────────────────────────────────────────────────────────
+
+@router.post(
+    "",
+    response_model=TelemetryIngestResponse,
+    summary="Ingest one telemetry reading",
+)
+def ingest_telemetry(reading: TelemetryReading) -> TelemetryIngestResponse:
+    telemetry_source_tracker.record(reading.source)
+    save_reading_safe(reading)
+    result = pipeline.process_reading(reading)
+    return TelemetryIngestResponse(accepted=True, processed=result is not None)
+
 
 @router.get(
     "/latest",

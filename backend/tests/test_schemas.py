@@ -59,6 +59,22 @@ def test_scenario_field_accepted(valid_payload):
     assert reading.scenario == "gradual_tilt"
 
 
+def test_source_defaults_to_unknown(valid_payload):
+    reading = TelemetryReading(**valid_payload)
+    assert reading.source == "unknown"
+
+
+@pytest.mark.parametrize("source", ["hardware", "simulator"])
+def test_source_field_accepts_known_sources(valid_payload, source):
+    reading = TelemetryReading(**{**valid_payload, "source": source})
+    assert reading.source == source
+
+
+def test_source_field_rejects_unknown_values(valid_payload):
+    with pytest.raises(ValidationError):
+        TelemetryReading(**{**valid_payload, "source": "manual"})
+
+
 def test_max_valid_vibration(valid_payload):
     valid_payload["vibration"] = 1023
     reading = TelemetryReading(**valid_payload)

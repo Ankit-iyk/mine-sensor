@@ -8,10 +8,12 @@ Endpoints:
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing import Literal
 
 from app.config import settings
 from app.ingestion.mqtt_client import mqtt_client
 from app.db.session import check_db_connection
+from app.ingestion.source_tracker import telemetry_source_tracker
 
 router = APIRouter(tags=["Health"])
 
@@ -28,6 +30,9 @@ class SystemStatusResponse(BaseModel):
     backend: str
     mqtt: str
     database: str
+    mode: Literal["LIVE", "SIMULATED", "OFFLINE"]
+    last_hardware_seen: str | None
+    last_simulator_seen: str | None
 
 
 @router.get(
@@ -55,8 +60,10 @@ async def get_health() -> HealthResponse:
 )
 async def get_system_status() -> SystemStatusResponse:
     db_ok = check_db_connection()
+    telemetry_status = telemetry_source_tracker.status()
     return SystemStatusResponse(
         backend="online",
         mqtt="connected" if mqtt_client.is_connected else "disconnected",
         database="connected" if db_ok else "disconnected",
+        **telemetry_status,
     )
