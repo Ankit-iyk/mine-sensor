@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use SUBSENSE in your work, please cite this repository."
+title: SUBSENSE
+authors:
+  - family-names: N
+    given-names: Deeksha
+  - family-names: "[full name to be added]"
+    given-names: Ankit
+  - family-names: "[full name to be added]"
+    given-names: Sharat
