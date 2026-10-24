@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     mqtt_keepalive: int = Field(default=60, ge=5)
     mqtt_topic_prefix: str = "mine"
     mqtt_qos: int = Field(default=1, ge=0, le=2)
+    hardware_device_key: str = ""
 
     # ── Database (Phase 4) ───────────────────────────
     database_url: str = "postgresql+psycopg2://subsense:subsense_dev@localhost:5432/subsense"

@@ -19,6 +19,7 @@ import structlog
 from typing import Any
 
 from app.ingestion.schemas import TelemetryReading, ValidationResult
+from app.ingestion.device_auth import is_valid_hardware_device_key
 
 logger = structlog.get_logger(__name__)
 
@@ -49,6 +50,15 @@ def handle_message(topic: str, raw_payload: bytes) -> None:
             raw_preview=raw_payload[:120],
         )
         return
+
+    device_key = payload.pop("hardware_device_key", None)
+    if payload.get("source") == "hardware" and not is_valid_hardware_device_key(device_key):
+        logger.warning(
+            "hardware_telemetry_unauthenticated",
+            topic=topic,
+            transport="mqtt",
+        )
+        payload["source"] = "unknown"
 
     # ── Step 2: Duplicate detection ──────────────────
     msg_hash = _quick_hash(raw_payload)

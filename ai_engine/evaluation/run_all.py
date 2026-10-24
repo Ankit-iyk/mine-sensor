@@ -256,12 +256,17 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "fit on the same normal-only training rows as the Isolation Forest. "
             "`current_system` is the unchanged `AIEngineDetector` decision rule with that fitted "
             "Isolation Forest; only `ANOMALOUS` counts as an alert, while `MICRO_ANOMALY` does not. "
-            "`current_system_spatial` is the full evaluation composite: the current-system alert "
-            "plus either three consecutive node alerts or same-step alerts from at least two of "
-            "the three Z01 nodes. This persistence/spatial policy is an evaluation wrapper, not a "
-            "change to the production detector. The feature-group ablation `no_acceleration_features` "
-            "is expected to be a no-op because the current Isolation Forest feature contract does "
-            "not include accelerometer-derived columns.\n\n"
+            "`current_system_spatial` applies the shared wrapper to current-system alerts. The "
+            "wrapper requires three consecutive alerts per node or same-step alerts from at least "
+            "two nodes in a zone. The fair `*_spatial` comparisons apply this same wrapper to each "
+            "method's raw alerts. `baseline_deviation_only_spatial` removes the Isolation Forest "
+            "and alerts at 0.11° baseline deviation before the wrapper; `isolation_forest_spatial` "
+            "uses Isolation Forest alerts alone before the wrapper. `vibration_threshold` alerts "
+            "at vibration intensity ≥ 0.35. `stuck_sensor_check` flags zero variance across tilt, "
+            "acceleration magnitude and vibration intensity over 10 feature readings. These are "
+            "evaluation methods, not changes to the production detector. The feature-group ablation "
+            "`no_acceleration_features` is expected to be a no-op because the current Isolation "
+            "Forest feature contract does not include accelerometer-derived columns.\n\n"
         )
         stream.write("Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled hardware CSV input: `--real-csv PATH`.\n\n")
         if real_csv:
@@ -270,6 +275,29 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         _write_table(stream, [row for row in rows if row["noise_model"] == "simulator" and not row["method"].startswith("ablation_")])
         stream.write("\n## Distribution-shift results\n\n")
         _write_table(stream, [row for row in rows if row["noise_model"] == "distribution_shift" and not row["method"].startswith("ablation_")])
+        stream.write("\n## False alarms per hour\n\n")
+        stream.write(
+            "Values are mean false-alarm rising edges per summed node-hour on normal and "
+            "baseline-drift nuisance controls, with 95% confidence intervals across seeds.\n\n"
+        )
+        _write_false_alarm_table(stream, rows)
+        stream.write("\n## Best method per scenario\n\n")
+        stream.write(
+            "Selected by highest mean point-level F1 within each noise model/scenario. "
+            "Intervals are 95% confidence intervals across seeds; this ranking is descriptive "
+            "and does not establish statistically significant differences. Ties on mean F1 "
+            "are broken by PR-AUC, then event recall.\n\n"
+        )
+        _write_best_method_table(stream, rows)
+        stream.write("\n## Isolation Forest incremental value\n\n")
+        stream.write(
+            "Compare `baseline_deviation_only_spatial` against `current_system_spatial`: "
+            "both use the same persistence/spatial wrapper, so differences isolate the fitted "
+            "Isolation Forest's contribution to the current system's baseline-deviation alerts.\n\n"
+        )
+        _write_isolation_forest_value_table(stream, rows)
+        stream.write("\n## Where simple methods win\n\n")
+        _write_simple_wins(stream, rows)
         stream.write("\n## Ablation results: simulator noise\n\n")
         _write_table(stream, _ablation_table_rows(rows, "simulator"))
         stream.write("\n## Ablation results: distribution shift\n\n")
@@ -307,6 +335,161 @@ def _write_table(stream: Any, rows: list[dict[str, Any]]) -> None:
         for metric in columns[2:]:
             values.append(_format_value(row.get(f"{metric}_mean", math.nan), row.get(f"{metric}_ci95_low", math.nan), row.get(f"{metric}_ci95_high", math.nan)))
         stream.write("| " + " | ".join(values) + " |\n")
+
+
+def _write_false_alarm_table(stream: Any, rows: list[dict[str, Any]]) -> None:
+    columns = (
+        "noise_model", "method", "normal_false_alarms_per_hour",
+        "nuisance_false_alarms_per_hour",
+    )
+    stream.write("| " + " | ".join(columns) + " |\n")
+    stream.write("|" + "|".join(["---"] * len(columns)) + "|\n")
+    for noise_model in ("simulator", "distribution_shift"):
+        candidates = [
+            row for row in rows
+            if row["noise_model"] == noise_model
+            and row["scenario"] == "normal"
+            and not row["method"].startswith("ablation_")
+        ]
+        for row in candidates:
+            stream.write(
+                f"| {noise_model} | {row['method']} | "
+                f"{_format_value(row['false_alarms_normal_per_hour_mean'], row['false_alarms_normal_per_hour_ci95_low'], row['false_alarms_normal_per_hour_ci95_high'])} | "
+                f"{_format_value(row['false_alarms_nuisance_per_hour_mean'], row['false_alarms_nuisance_per_hour_ci95_low'], row['false_alarms_nuisance_per_hour_ci95_high'])} |\n"
+            )
+
+
+def _write_best_method_table(stream: Any, rows: list[dict[str, Any]]) -> None:
+    stream.write(
+        "| noise_model | scenario | highest-mean-F1 method | F1 (95% CI) | event recall (95% CI) |\n"
+        "|---|---|---|---|---|\n"
+    )
+    for noise_model in ("simulator", "distribution_shift"):
+        scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
+        for scenario in scenarios:
+            if scenario not in EVENT_SCENARIOS:
+                stream.write(
+                    f"| {noise_model} | {scenario} | negative control (no labelled event) | n/a | n/a |\n"
+                )
+                continue
+            candidates = [
+                row for row in rows
+                if row["noise_model"] == noise_model
+                and row["scenario"] == scenario
+                and row["method"] in METHODS
+                and math.isfinite(float(row["f1_mean"]))
+            ]
+            if not candidates:
+                continue
+            winner = max(
+                candidates,
+                key=lambda row: (
+                    float(row["f1_mean"]),
+                    _finite_or(row.get("pr_auc_mean"), -math.inf),
+                    _finite_or(row.get("event_recall_mean"), -math.inf),
+                ),
+            )
+            stream.write(
+                f"| {noise_model} | {scenario} | {_method_label(winner['method'])} | "
+                f"{_format_value(winner['f1_mean'], winner['f1_ci95_low'], winner['f1_ci95_high'])} | "
+                f"{_format_value(winner['event_recall_mean'], winner['event_recall_ci95_low'], winner['event_recall_ci95_high'])} |\n"
+            )
+
+
+def _write_isolation_forest_value_table(stream: Any, rows: list[dict[str, Any]]) -> None:
+    stream.write(
+        "| noise_model | scenario | baseline-only F1 (95% CI) | current-system F1 (95% CI) | baseline-only event recall (95% CI) | current-system event recall (95% CI) |\n"
+        "|---|---|---|---|---|---|\n"
+    )
+    for noise_model in ("simulator", "distribution_shift"):
+        scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
+        for scenario in scenarios:
+            baseline = _find_result(rows, noise_model, scenario, "baseline_deviation_only_spatial")
+            current = _find_result(rows, noise_model, scenario, "current_system_spatial")
+            if baseline is None or current is None:
+                continue
+            stream.write(
+                f"| {noise_model} | {scenario} | "
+                f"{_format_value(baseline['f1_mean'], baseline['f1_ci95_low'], baseline['f1_ci95_high'])} | "
+                f"{_format_value(current['f1_mean'], current['f1_ci95_low'], current['f1_ci95_high'])} | "
+                f"{_format_value(baseline['event_recall_mean'], baseline['event_recall_ci95_low'], baseline['event_recall_ci95_high'])} | "
+                f"{_format_value(current['event_recall_mean'], current['event_recall_ci95_low'], current['event_recall_ci95_high'])} |\n"
+            )
+
+
+def _write_simple_wins(stream: Any, rows: list[dict[str, Any]]) -> None:
+    simple_methods = {
+        "fixed_tilt_threshold", "fixed_tilt_threshold_spatial",
+        "baseline_z_score", "baseline_z_score_spatial",
+        "baseline_deviation_only_spatial", "ewma", "cusum",
+        "isolation_forest_spatial", "vibration_threshold", "stuck_sensor_check",
+    }
+    wins = []
+    for noise_model in ("simulator", "distribution_shift"):
+        scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
+        for scenario in scenarios:
+            current = _find_result(rows, noise_model, scenario, "current_system_spatial")
+            simple = [
+                row for row in rows
+                if row["noise_model"] == noise_model
+                and row["scenario"] == scenario
+                and row["method"] in simple_methods
+                and math.isfinite(float(row["f1_mean"]))
+            ]
+            if current is None or not simple:
+                continue
+            winner = max(simple, key=lambda row: float(row["f1_mean"]))
+            if float(winner["f1_mean"]) > float(current["f1_mean"]) + 1e-12:
+                wins.append((noise_model, scenario, winner, current))
+    stream.write(
+        "| noise_model | scenario | best simple/comparable method | its F1 (95% CI) | current_system_spatial F1 (95% CI) |\n"
+        "|---|---|---|---|---|\n"
+    )
+    if not wins:
+        stream.write("| — | — | No simple method had higher mean F1 in these runs | — | — |\n")
+        return
+    for noise_model, scenario, winner, current in wins:
+        stream.write(
+            f"| {noise_model} | {scenario} | {_method_label(winner['method'])} | "
+            f"{_format_value(winner['f1_mean'], winner['f1_ci95_low'], winner['f1_ci95_high'])} | "
+            f"{_format_value(current['f1_mean'], current['f1_ci95_low'], current['f1_ci95_high'])} |\n"
+        )
+
+
+def _find_result(
+    rows: list[dict[str, Any]], noise_model: str, scenario: str, method: str
+) -> dict[str, Any] | None:
+    return next((
+        row for row in rows
+        if row["noise_model"] == noise_model
+        and row["scenario"] == scenario
+        and row["method"] == method
+    ), None)
+
+
+def _finite_or(value: Any, fallback: float) -> float:
+    return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else fallback
+
+
+def _method_label(method: str) -> str:
+    labels = {
+        "fixed_tilt_threshold": "fixed tilt-deviation threshold",
+        "fixed_tilt_threshold_spatial": "fixed tilt threshold + persistence/spatial corroboration",
+        "baseline_z_score": "per-node baseline z-score",
+        "baseline_z_score_spatial": "baseline z-score + persistence/spatial corroboration",
+        "baseline_deviation_only_spatial": "baseline-deviation threshold, no Isolation Forest + wrapper",
+        "ewma": "EWMA tilt-deviation baseline",
+        "cusum": "CUSUM tilt-deviation baseline",
+        "isolation_forest": "Isolation Forest alone",
+        "isolation_forest_spatial": "Isolation Forest alone + persistence/spatial corroboration",
+        "one_class_svm": "One-Class SVM",
+        "local_outlier_factor": "Local Outlier Factor",
+        "current_system": "current system (Isolation Forest + baseline deviation)",
+        "current_system_spatial": "current system + persistence/spatial corroboration",
+        "vibration_threshold": "vibration-only threshold",
+        "stuck_sensor_check": "zero-variance stuck-sensor check",
+    }
+    return labels.get(method, method)
 
 
 def _ablation_table_rows(rows: list[dict[str, Any]], noise_model: str) -> list[dict[str, Any]]:

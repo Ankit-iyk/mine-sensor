@@ -42,17 +42,20 @@ if the model is missing or cannot be loaded.
 
 ## Results
 
-Held-out evaluation used seeds 101–103, with 196 feature readings per run.
+The reproducible evaluation in [docs/evaluation/results.md](docs/evaluation/results.md)
+compares fixed thresholds, statistical/temporal baselines, learned detectors,
+and the current system on the same backend feature pipeline. Its fair ablations
+apply the same persistence/spatial wrapper when comparing baseline deviation
+with and without the Isolation Forest. Baseline deviation plus temporal
+persistence and spatial corroboration carries most demonstrated detection;
+the report shows the Isolation Forest's incremental value per scenario rather
+than assuming it helps. Vibration and sensor-failure detection remain limited.
+These are synthetic results, not field-performance claims. Reproduce the report
+with `python -m ai_engine.evaluation.run_all --seeds 30`.
 
-| Scenario | Result |
-|---|---|
-| normal | About 93% NORMAL |
-| gradual_tilt | About 97% ANOMALOUS |
-| multi_node_event | About 97% ANOMALOUS |
-| vibration_event | About 59% NORMAL |
-| persistent_anomaly | About 100% MICRO_ANOMALY |
-
-Tests: **90 AI-engine + 108 backend, all passing.**
+The latest full validation for this revision reports **102 AI-engine tests
+passed** and **117 backend tests passed**. Rerun the test commands below for
+current results.
 
 ## Known limitations
 
@@ -83,6 +86,13 @@ Create the backend environment file:
 ```powershell
 copy backend\.env.example backend\.env
 ```
+
+Set a private `HARDWARE_DEVICE_KEY` in `backend\.env` before using hardware
+telemetry. REST clients send it as `X-Hardware-Device-Key`; MQTT hardware
+payloads include a `hardware_device_key` field. A missing or invalid key
+downgrades `source="hardware"` to `unknown`, which never reports LIVE. Use TLS
+for REST/MQTT and restrict broker access; the shared key is not a substitute
+for transport encryption or per-device credentials.
 
 ### Docker, backend, simulator, and dashboard
 
@@ -142,6 +152,24 @@ feature pipeline:
 
 ```powershell
 python -m ai_engine.training.train_from_backend
+```
+
+### Real sensor recordings
+
+See [docs/data-collection-protocol.md](docs/data-collection-protocol.md) for
+the stationary and controlled-event protocol. To capture serial JSON lines,
+install optional `pyserial` and run (replace `COM4` with the ESP32's port):
+
+```powershell
+python -m pip install pyserial
+python tools/log_serial_to_csv.py --port COM4 --baudrate 115200 --output readings.csv
+```
+
+Attach reviewed labels with `--label-file labels.csv`. For a stationary CSV,
+compute the noise floor and empirical threshold outputs:
+
+```powershell
+python -m ai_engine.evaluation.noise_floor readings.csv --output-dir docs/evaluation/real
 ```
 
 ### Tests

@@ -70,6 +70,27 @@ async def test_system_mode_tracks_telemetry_post(monkeypatch):
                 json={**payload, "source": "hardware"},
             )
             assert hardware_response.status_code == 200
+            unauthenticated_status = (await client.get("/api/system/status")).json()
+            assert unauthenticated_status["mode"] == "SIMULATED"
+            assert unauthenticated_status["last_hardware_seen"] is None
+
+            monkeypatch.setattr("app.config.settings.hardware_device_key", "test-device-secret")
+            invalid_key_response = await client.post(
+                "/api/telemetry",
+                json={**payload, "source": "hardware"},
+                headers={"X-Hardware-Device-Key": "wrong-secret"},
+            )
+            assert invalid_key_response.status_code == 200
+            invalid_key_status = (await client.get("/api/system/status")).json()
+            assert invalid_key_status["mode"] == "SIMULATED"
+            assert invalid_key_status["last_hardware_seen"] is None
+
+            authenticated_response = await client.post(
+                "/api/telemetry",
+                json={**payload, "source": "hardware"},
+                headers={"X-Hardware-Device-Key": "test-device-secret"},
+            )
+            assert authenticated_response.status_code == 200
             live_status = (await client.get("/api/system/status")).json()
             assert live_status["mode"] == "LIVE"
             assert live_status["last_hardware_seen"] is not None

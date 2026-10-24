@@ -10,7 +10,8 @@ Endpoints:
 
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Query, HTTPException, status
+import structlog
+from fastapi import APIRouter, Header, Query, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
 from app.db.session import DbSession
@@ -18,9 +19,11 @@ from app.db.repositories import readings as readings_repo
 from app.db.repositories.sensor_readings import save_reading_safe
 from app.ingestion.schemas import TelemetryReading
 from app.ingestion.source_tracker import telemetry_source_tracker
+from app.ingestion.device_auth import is_valid_hardware_device_key
 from app.processing.pipeline import pipeline
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
+logger = structlog.get_logger(__name__)
 
 
 # ── Response Schemas ─────────────────────────────────────────────────────────
@@ -69,7 +72,20 @@ class TelemetryIngestResponse(BaseModel):
     response_model=TelemetryIngestResponse,
     summary="Ingest one telemetry reading",
 )
-def ingest_telemetry(reading: TelemetryReading) -> TelemetryIngestResponse:
+def ingest_telemetry(
+    reading: TelemetryReading,
+    hardware_device_key: Optional[str] = Header(default=None, alias="X-Hardware-Device-Key"),
+) -> TelemetryIngestResponse:
+    if reading.source == "hardware":
+        if is_valid_hardware_device_key(hardware_device_key):
+            reading = reading.model_copy(update={"source": "hardware"})
+        else:
+            logger.warning(
+                "hardware_telemetry_unauthenticated",
+                node_id=reading.node_id,
+                transport="rest",
+            )
+            reading = reading.model_copy(update={"source": "unknown"})
     telemetry_source_tracker.record(reading.source)
     save_reading_safe(reading)
     result = pipeline.process_reading(reading)

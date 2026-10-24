@@ -19,14 +19,20 @@ from ai_engine.pipeline.build_training_data import FEATURE_COLUMNS
 
 METHODS = (
     "fixed_tilt_threshold",
+    "fixed_tilt_threshold_spatial",
     "baseline_z_score",
+    "baseline_z_score_spatial",
+    "baseline_deviation_only_spatial",
     "ewma",
     "cusum",
     "isolation_forest",
+    "isolation_forest_spatial",
     "one_class_svm",
     "local_outlier_factor",
     "current_system",
     "current_system_spatial",
+    "vibration_threshold",
+    "stuck_sensor_check",
 )
 ABLATIONS = (
     "no_baseline_deviation",
@@ -94,16 +100,44 @@ class MethodSuite:
         if method == "fixed_tilt_threshold":
             scores = np.asarray([row["tilt_deviation"] for row in rows], dtype=float)
             return scores, scores >= 0.5
+        if method == "fixed_tilt_threshold_spatial":
+            scores = np.asarray([row["tilt_deviation"] for row in rows], dtype=float)
+            raw_alerts = scores >= 0.5
+            return scores, self._persist_and_corroborate(rows, raw_alerts, None)
         if method == "baseline_z_score":
             scores = np.asarray([
                 (row["tilt_deviation"] - self.deviation_mean) / self.deviation_std
                 for row in rows
             ])
             return scores, scores >= 3.0
+        if method == "baseline_z_score_spatial":
+            scores = np.asarray([
+                (row["tilt_deviation"] - self.deviation_mean) / self.deviation_std
+                for row in rows
+            ])
+            return scores, self._persist_and_corroborate(rows, scores >= 3.0, None)
+        if method == "baseline_deviation_only_spatial":
+            scores = np.asarray([
+                max(
+                    float(row.get("tilt_deviation", 0.0)),
+                    float(row.get("baseline_deviation", 0.0)),
+                )
+                for row in rows
+            ])
+            raw_alerts = scores >= 0.11
+            return scores, self._persist_and_corroborate(rows, raw_alerts, None)
         if method in ("ewma", "cusum"):
             scores = self._sequential_scores(rows, method)
             threshold = 0.3 if method == "ewma" else 0.8
             return scores, scores >= threshold
+        if method == "vibration_threshold":
+            scores = np.asarray([
+                float(row.get("vibration_intensity", 0.0)) for row in rows
+            ])
+            return scores, scores >= 0.35
+        if method == "stuck_sensor_check":
+            scores, alerts = _stuck_sensor_predictions(rows)
+            return scores, alerts
 
         variant_rows = [_ablate_row(row, ablation) for row in rows] if ablation else rows
         matrix = _matrix(variant_rows)
@@ -111,6 +145,10 @@ class MethodSuite:
             scores = -self.isolation_forest.decision_function(matrix)
             alerts = self.isolation_forest.predict(matrix) == -1
             return scores, alerts
+        if method == "isolation_forest_spatial":
+            scores = -self.isolation_forest.decision_function(matrix)
+            raw_alerts = self.isolation_forest.predict(matrix) == -1
+            return scores, self._persist_and_corroborate(rows, raw_alerts, None)
         if method == "one_class_svm":
             scaled = self.scaler.transform(matrix)
             scores = -self.one_class_svm.decision_function(scaled)
@@ -236,3 +274,32 @@ def _matrix(rows: list[dict[str, Any]]) -> np.ndarray:
         [[float(row.get(column, 0.0)) for column in FEATURE_COLUMNS] for row in rows],
         dtype=float,
     )
+
+
+def _stuck_sensor_predictions(
+    rows: list[dict[str, Any]],
+    window_size: int = 10,
+    variance_tolerance: float = 1e-8,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Flag a node when all available sensor channels are constant in a window."""
+    scores = np.zeros(len(rows), dtype=float)
+    alerts = np.zeros(len(rows), dtype=bool)
+    by_node: dict[str, list[int]] = defaultdict(list)
+    for index, row in enumerate(rows):
+        by_node[str(row["node_id"])].append(index)
+
+    channels = ("tilt_x", "tilt_y", "accel_magnitude", "vibration_intensity")
+    for indices in by_node.values():
+        ordered = sorted(indices, key=lambda index: rows[index]["timestamp"])
+        for end in range(window_size - 1, len(ordered)):
+            window_indices = ordered[end - window_size + 1:end + 1]
+            window = [
+                [float(rows[index].get(channel, 0.0)) for channel in channels]
+                for index in window_indices
+            ]
+            variances = np.var(np.asarray(window), axis=0)
+            score = 1.0 / (float(np.max(variances)) + variance_tolerance)
+            output_index = ordered[end]
+            scores[output_index] = score
+            alerts[output_index] = bool(np.all(variances <= variance_tolerance))
+    return scores, alerts
