@@ -43,25 +43,59 @@ if the model is missing or cannot be loaded.
 ## Results
 
 The reproducible evaluation in [docs/evaluation/results.md](docs/evaluation/results.md)
-compares fixed thresholds, statistical/temporal baselines, learned detectors,
-and the current system on the same backend feature pipeline. Its fair ablations
-apply the same persistence/spatial wrapper when comparing baseline deviation
-with and without the Isolation Forest. Baseline deviation plus temporal
-persistence and spatial corroboration carries most demonstrated detection;
-the report shows the Isolation Forest's incremental value per scenario rather
-than assuming it helps. Vibration and sensor-failure detection remain limited.
-These are synthetic results, not field-performance claims. Reproduce the report
-with `python -m ai_engine.evaluation.run_all --seeds 30`.
+compares methods on the same backend feature pipeline. The latest report uses
+12 test seeds per scenario and noise set; the learned methods were trained on
+event-free nominal, baseline-drift nuisance, and shifted-noise examples using
+disjoint seeds. Fair Isolation Forest comparisons use the same persistence
+and spatial wrapper for the full system and the baseline-deviation-only
+counterfactual.
 
-The latest full validation for this revision reports **102 AI-engine tests
-passed** and **117 backend tests passed**. Rerun the test commands below for
-current results.
+The Isolation Forest adds value in some tested conditions, but not uniformly.
+For gradual tilt under simulator noise, adding it changes F1 from **0.967**
+[0.961, 0.973] to **0.945** [0.941, 0.948], while reducing nuisance false
+alarms from **264.348** [238.386, 290.309] to **6.087** [0.000, 13.271] per
+hour. For step tilt, F1 changes from **0.874** [0.852, 0.896] to **0.877**
+[0.858, 0.897], with no event-recall difference. Under distribution shift,
+the full system improves gradual-tilt F1 from **0.595** [0.578, 0.612] to
+**0.885** [0.871, 0.899] and step-tilt F1 from **0.225** [0.210, 0.239] to
+**0.689** [0.643, 0.735], with lower false-alarm rates than the no-forest
+baseline. These are synthetic results; confidence intervals and all scenarios
+are in the evaluation report.
+
+The checked gradual-tilt comparisons also correct prior wording: simulator
+normal-control false alarms are tied for the unwrapped z-score and current
+system (**0/hour** each), while nuisance false alarms are **0.870** [0.000,
+2.783] vs **45.217** [34.147, 56.287] per hour, respectively. Removing
+temporal persistence raises F1 from **0.945** [0.941, 0.948] to **0.958**
+[0.954, 0.962] and nuisance false alarms from **6.087** [0.000, 13.271] to
+**45.217** [34.147, 56.287] per hour; event recall remains 1.000 for both.
+
+Simple specialized baselines win in important cases: the fixed tilt threshold
+has the best step-tilt F1 on both noise sets, while vibration-only threshold
+leads on shifted-noise vibration bursts and the stuck-sensor check leads on
+simulator sensor failure; Isolation Forest alone leads on simulator vibration
+bursts. The winning method varies by scenario; no single detector wins
+everywhere. Reproduce the full default run with
+`python -m ai_engine.evaluation.run_all --seeds 30`. The checked-in report was
+generated with 12 test seeds; this run took **176.39 minutes**, so it exceeded
+the 20-minute target.
+
+The latest full validation reports **103 AI-engine tests passed** and
+**119 backend tests passed**. Rerun the test commands below for current results.
 
 ## Known limitations
 
-- Persistent anomalies and isolated vibration events are only weakly detected.
-- About 7% of normal readings receive a false `MICRO_ANOMALY` label.
-- The model is trained on simulated data only, not real ESP32 readings.
+- All evaluation results use synthetic data; no real ESP32 recording has been
+  evaluated, so the results do not establish field performance.
+- Evaluation performance changes under the shifted-noise test. The current
+  system + persistence/spatial wrapper averages **38.270** [21.825, 54.715]
+  false alarms/hour on shifted normal controls in the 12-seed run; see the
+  per-method report table.
+- Vibration and stuck-sensor results are from specialized evaluation baselines,
+  not improvements to production detector behavior.
+- A short 12-seed run was used for the checked-in report because larger runs
+  exceeded the 20-minute target; its confidence intervals are correspondingly
+  less stable than a larger study.
 - The final gradual-tilt risk is WARNING (score 45), not DANGER.
 - The full Docker + MQTT + dashboard chain was not run end to end.
 

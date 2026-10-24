@@ -1,6 +1,15 @@
 import json
 
 from app.ingestion import message_handler
+from app.ingestion.device_auth import is_valid_hardware_device_key
+
+
+def test_hardware_key_helper_rejects_unconfigured_and_non_string_candidates(monkeypatch):
+    monkeypatch.setattr("app.config.settings.hardware_device_key", "")
+    assert not is_valid_hardware_device_key("some-key")
+    monkeypatch.setattr("app.config.settings.hardware_device_key", "mqtt-secret")
+    assert not is_valid_hardware_device_key(None)
+    assert not is_valid_hardware_device_key(123)  # type: ignore[arg-type]
 
 
 def test_mqtt_hardware_source_requires_payload_device_key(monkeypatch):
@@ -25,6 +34,27 @@ def test_mqtt_hardware_source_requires_payload_device_key(monkeypatch):
     message_handler.handle_message("mine/Z01/N01/telemetry", json.dumps(payload).encode())
     assert handled[-1].source == "unknown"
     assert not hasattr(handled[-1], "hardware_device_key")
+
+
+def test_mqtt_hardware_source_without_payload_key_is_unknown(monkeypatch):
+    monkeypatch.setattr("app.config.settings.hardware_device_key", "mqtt-secret")
+    message_handler._RECENT_MESSAGES.clear()
+    handled = []
+    monkeypatch.setattr(message_handler, "_dispatch", handled.append)
+    payload = {
+        "source": "hardware",
+        "node_id": "N03",
+        "zone_id": "Z01",
+        "timestamp": "2026-10-24T00:00:02+00:00",
+        "accel_x": 0.0,
+        "accel_y": 0.0,
+        "accel_z": 9.81,
+        "tilt_x": 1.0,
+        "tilt_y": 0.5,
+        "vibration": 0,
+    }
+    message_handler.handle_message("mine/Z01/N03/telemetry", json.dumps(payload).encode())
+    assert handled[-1].source == "unknown"
 
 
 def test_mqtt_hardware_source_accepts_valid_payload_device_key(monkeypatch):

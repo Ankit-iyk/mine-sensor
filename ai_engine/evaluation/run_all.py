@@ -34,6 +34,12 @@ _TRAIN_SEED_BASE = 100_000
 _TEST_SEED_BASE = 10_000
 _SHIFT_SEED_BASE = 200_000
 _TRAIN_KEEP_EVERY = 10
+_TRAINING_CONDITIONS = (
+    ("normal", "simulator"),
+    ("baseline_drift", "simulator"),
+    ("normal", "distribution_shift"),
+)
+_FOREST_VALUE_SCENARIOS = ("gradual_tilt", "step_tilt", "persistent_offset")
 _METRICS = (
     "event_recall", "detection_delay_seconds", "false_alarms_normal_per_hour",
     "false_alarms_nuisance_per_hour", "precision", "recall", "f1", "pr_auc",
@@ -56,6 +62,7 @@ def run_evaluation(
     for noise_model, seed_base in (("simulator", _TEST_SEED_BASE), ("distribution_shift", _SHIFT_SEED_BASE)):
         episodes: dict[tuple[str, int], list[dict[str, Any]]] = {}
         control_cache: dict[tuple[str, int], tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]] = {}
+        seed_metrics: dict[tuple[str, str, int], dict[str, float]] = {}
         for scenario in SCENARIOS:
             for seed_offset in range(seeds):
                 seed = seed_base + seed_offset
@@ -71,10 +78,12 @@ def run_evaluation(
                     controls = _cached_control_predictions(
                         suite, episodes, control_cache, method, seed
                     )
-                    seed_records.append(_episode_metrics(
+                    metrics = _episode_metrics(
                         rows, scores, alerts,
                         controls,
-                    ))
+                    )
+                    seed_records.append(metrics)
+                    seed_metrics[(scenario, method, seed)] = metrics
                 summaries.append(_summarize(
                     noise_model, scenario, method, seed_records, seeds
                 ))
@@ -94,6 +103,20 @@ def run_evaluation(
                 summaries.append(_summarize(
                     noise_model, scenario, f"ablation_{ablation}", seed_records, seeds
                 ))
+        for scenario in _FOREST_VALUE_SCENARIOS:
+            paired_differences = []
+            for seed_offset in range(seeds):
+                seed = seed_base + seed_offset
+                baseline = seed_metrics[(scenario, "baseline_deviation_only_spatial", seed)]
+                full = seed_metrics[(scenario, "current_system_spatial", seed)]
+                paired_differences.append({
+                    metric: full[metric] - baseline[metric]
+                    for metric in _METRICS
+                    if math.isfinite(full[metric]) and math.isfinite(baseline[metric])
+                })
+            summaries.append(_summarize_paired_difference(
+                noise_model, scenario, paired_differences, seeds
+            ))
     if real_csv:
         summaries.extend(_evaluate_real_csv(suite, real_csv))
 
@@ -108,11 +131,17 @@ def _training_features(seeds: int) -> list[dict[str, Any]]:
     train_seed_count = max(30, seeds)
     for offset in range(train_seed_count):
         seed = _TRAIN_SEED_BASE + offset
-        normal = generate_episode("normal", seed, "simulator")
-        features = extract_backend_features(normal)
-        rows.extend(features[::_TRAIN_KEEP_EVERY])
+        for scenario, noise_model in _TRAINING_CONDITIONS:
+            readings = generate_episode(scenario, seed, noise_model)
+            features = extract_backend_features(readings)
+            rows.extend(
+                row for row in features[::_TRAIN_KEEP_EVERY]
+                if not row["is_event"]
+            )
     if any(row["seed"] < _TRAIN_SEED_BASE for row in rows):
         raise RuntimeError("training/test seed partition overlap detected")
+    if not rows or any(row["is_event"] for row in rows):
+        raise RuntimeError("training set must contain only event-free feature rows")
     return rows
 
 
@@ -188,6 +217,29 @@ def _summarize(
     return result
 
 
+def _summarize_paired_difference(
+    noise_model: str,
+    scenario: str,
+    seed_records: list[dict[str, float]],
+    requested_seeds: int,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "noise_model": noise_model,
+        "scenario": scenario,
+        "method": "forest_added_value",
+        "seeds_requested": requested_seeds,
+    }
+    for metric in _METRICS:
+        mean, low, high, n = confidence_interval(
+            record[metric] for record in seed_records if metric in record
+        )
+        result[f"{metric}_mean"] = mean
+        result[f"{metric}_ci95_low"] = low
+        result[f"{metric}_ci95_high"] = high
+        result[f"{metric}_n"] = n
+    return result
+
+
 def _evaluate_real_csv(suite: MethodSuite, path: Path) -> list[dict[str, Any]]:
     raw_rows = load_real_csv(path)
     rows = extract_backend_features(raw_rows)
@@ -229,6 +281,9 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             f"`{_TRAIN_SEED_BASE + max(30, seeds) - 1}`; simulator test seeds are "
             f"`{_TEST_SEED_BASE}`–`{_TEST_SEED_BASE + seeds - 1}` and shifted test seeds "
             f"`{_SHIFT_SEED_BASE}`–`{_SHIFT_SEED_BASE + seeds - 1}`. "
+            "The shared learned-method training partition combines nominal simulator readings, "
+            "slow baseline-drift nuisance readings, and nominal readings with added sensor noise; "
+            "all training rows are event-free. "
             "All readings use the backend Kalman filter, rolling buffer, baseline tracker, "
             "and FeatureExtractor. Confidence intervals are two-sided 95% Student-t intervals "
             "across seeds (bounded metrics are truncated to valid ranges). Detection delay "
@@ -253,7 +308,7 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "and threshold 0.80. Isolation Forest uses 100 trees, contamination 0.05, seed 71. "
             "One-Class SVM uses an RBF kernel and ν = 0.05; Local Outlier Factor uses novelty "
             "mode, contamination 0.05, and up to 35 neighbors. Both SVM/LOF use a StandardScaler "
-            "fit on the same normal-only training rows as the Isolation Forest. "
+            "fit on the same event-free widened training rows as the Isolation Forest. "
             "`current_system` is the unchanged `AIEngineDetector` decision rule with that fitted "
             "Isolation Forest; only `ANOMALOUS` counts as an alert, while `MICRO_ANOMALY` does not. "
             "`current_system_spatial` applies the shared wrapper to current-system alerts. The "
@@ -272,9 +327,9 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         if real_csv:
             stream.write(f"Real CSV input: `{real_csv}`. It uses the synthetic-trained models; no real-data results are included unless supplied.\n\n")
         stream.write("## Main results: simulator noise\n\n")
-        _write_table(stream, [row for row in rows if row["noise_model"] == "simulator" and not row["method"].startswith("ablation_")])
+        _write_table(stream, [row for row in rows if row["noise_model"] == "simulator" and row["method"] in METHODS])
         stream.write("\n## Distribution-shift results\n\n")
-        _write_table(stream, [row for row in rows if row["noise_model"] == "distribution_shift" and not row["method"].startswith("ablation_")])
+        _write_table(stream, [row for row in rows if row["noise_model"] == "distribution_shift" and row["method"] in METHODS])
         stream.write("\n## False alarms per hour\n\n")
         stream.write(
             "Values are mean false-alarm rising edges per summed node-hour on normal and "
@@ -291,11 +346,15 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         _write_best_method_table(stream, rows)
         stream.write("\n## Isolation Forest incremental value\n\n")
         stream.write(
-            "Compare `baseline_deviation_only_spatial` against `current_system_spatial`: "
-            "both use the same persistence/spatial wrapper, so differences isolate the fitted "
-            "Isolation Forest's contribution to the current system's baseline-deviation alerts.\n\n"
+            "The no-forest baseline and full system use the same persistence/spatial wrapper. "
+            "Delta is full system minus baseline, calculated as a paired difference on each "
+            "test seed before forming the 95% CI. Positive F1/recall is better; positive false "
+            "alarm deltas are worse. The full system applies the Isolation Forest decision "
+            "together with baseline-deviation thresholding.\n\n"
         )
         _write_isolation_forest_value_table(stream, rows)
+        stream.write("\n## Verified gradual-tilt claims\n\n")
+        _write_verified_claims(stream, rows)
         stream.write("\n## Where simple methods win\n\n")
         _write_simple_wins(stream, rows)
         stream.write("\n## Ablation results: simulator noise\n\n")
@@ -314,7 +373,7 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         )
         stream.write(
             "These are reproducible synthetic benchmarks, not evidence of field performance. "
-            "The backend Isolation Forest is retrained on the documented normal-only training partition for this comparison; "
+            "The backend Isolation Forest is retrained on the documented wider event-free training partition for this comparison; "
             "the detector implementation and runtime behavior were not modified.\n"
         )
 
@@ -349,7 +408,7 @@ def _write_false_alarm_table(stream: Any, rows: list[dict[str, Any]]) -> None:
             row for row in rows
             if row["noise_model"] == noise_model
             and row["scenario"] == "normal"
-            and not row["method"].startswith("ablation_")
+            and row["method"] in METHODS
         ]
         for row in candidates:
             stream.write(
@@ -365,8 +424,7 @@ def _write_best_method_table(stream: Any, rows: list[dict[str, Any]]) -> None:
         "|---|---|---|---|---|\n"
     )
     for noise_model in ("simulator", "distribution_shift"):
-        scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
-        for scenario in scenarios:
+        for scenario in _FOREST_VALUE_SCENARIOS:
             if scenario not in EVENT_SCENARIOS:
                 stream.write(
                     f"| {noise_model} | {scenario} | negative control (no labelled event) | n/a | n/a |\n"
@@ -398,23 +456,62 @@ def _write_best_method_table(stream: Any, rows: list[dict[str, Any]]) -> None:
 
 def _write_isolation_forest_value_table(stream: Any, rows: list[dict[str, Any]]) -> None:
     stream.write(
-        "| noise_model | scenario | baseline-only F1 (95% CI) | current-system F1 (95% CI) | baseline-only event recall (95% CI) | current-system event recall (95% CI) |\n"
-        "|---|---|---|---|---|---|\n"
+        "| noise_model | scenario | no-forest F1 (95% CI) | full-system F1 (95% CI) | paired ΔF1 (95% CI) | paired Δevent recall (95% CI) | paired Δnormal false alarms/hour (95% CI) | paired Δnuisance false alarms/hour (95% CI) |\n"
+        "|---|---|---|---|---|---|---|---|\n"
     )
     for noise_model in ("simulator", "distribution_shift"):
         scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
         for scenario in scenarios:
             baseline = _find_result(rows, noise_model, scenario, "baseline_deviation_only_spatial")
             current = _find_result(rows, noise_model, scenario, "current_system_spatial")
-            if baseline is None or current is None:
+            delta = _find_result(rows, noise_model, scenario, "forest_added_value")
+            if baseline is None or current is None or delta is None:
                 continue
             stream.write(
                 f"| {noise_model} | {scenario} | "
                 f"{_format_value(baseline['f1_mean'], baseline['f1_ci95_low'], baseline['f1_ci95_high'])} | "
                 f"{_format_value(current['f1_mean'], current['f1_ci95_low'], current['f1_ci95_high'])} | "
-                f"{_format_value(baseline['event_recall_mean'], baseline['event_recall_ci95_low'], baseline['event_recall_ci95_high'])} | "
-                f"{_format_value(current['event_recall_mean'], current['event_recall_ci95_low'], current['event_recall_ci95_high'])} |\n"
+                f"{_format_value(delta['f1_mean'], delta['f1_ci95_low'], delta['f1_ci95_high'])} | "
+                f"{_format_value(delta['event_recall_mean'], delta['event_recall_ci95_low'], delta['event_recall_ci95_high'])} | "
+                f"{_format_value(delta['false_alarms_normal_per_hour_mean'], delta['false_alarms_normal_per_hour_ci95_low'], delta['false_alarms_normal_per_hour_ci95_high'])} | "
+                f"{_format_value(delta['false_alarms_nuisance_per_hour_mean'], delta['false_alarms_nuisance_per_hour_ci95_low'], delta['false_alarms_nuisance_per_hour_ci95_high'])} |\n"
             )
+
+
+def _write_verified_claims(stream: Any, rows: list[dict[str, Any]]) -> None:
+    z_score = _find_result(rows, "simulator", "gradual_tilt", "baseline_z_score")
+    current = _find_result(rows, "simulator", "gradual_tilt", "current_system")
+    full = _find_result(rows, "simulator", "gradual_tilt", "current_system_spatial")
+    no_persistence = _find_result(
+        rows, "simulator", "gradual_tilt", "ablation_no_temporal_persistence"
+    )
+    if any(row is None for row in (z_score, current, full, no_persistence)):
+        raise ValueError("results are missing a row required for verified gradual-tilt comparisons")
+
+    stream.write(
+        "These comparisons are read from the generated CSV. False-alarm figures "
+        "are per summed node-hour; intervals are 95% CIs across seeds.\n\n"
+        "| Comparison | Method A | Method B | Interpretation |\n"
+        "|---|---|---|---|\n"
+    )
+    stream.write(
+        "| Z-score vs current-system false alarms | "
+        f"baseline_z_score: normal {_format_value(z_score['false_alarms_normal_per_hour_mean'], z_score['false_alarms_normal_per_hour_ci95_low'], z_score['false_alarms_normal_per_hour_ci95_high'])}; "
+        f"nuisance {_format_value(z_score['false_alarms_nuisance_per_hour_mean'], z_score['false_alarms_nuisance_per_hour_ci95_low'], z_score['false_alarms_nuisance_per_hour_ci95_high'])} | "
+        f"current_system: normal {_format_value(current['false_alarms_normal_per_hour_mean'], current['false_alarms_normal_per_hour_ci95_low'], current['false_alarms_normal_per_hour_ci95_high'])}; "
+        f"nuisance {_format_value(current['false_alarms_nuisance_per_hour_mean'], current['false_alarms_nuisance_per_hour_ci95_low'], current['false_alarms_nuisance_per_hour_ci95_high'])} | "
+        "Normal false-alarm rates are tied; compare nuisance rates as shown (the z-score is lower in this run). |\n"
+    )
+    stream.write(
+        "| Full system vs no temporal persistence | "
+        f"current_system_spatial: F1 {_format_value(full['f1_mean'], full['f1_ci95_low'], full['f1_ci95_high'])}; "
+        f"event recall {_format_value(full['event_recall_mean'], full['event_recall_ci95_low'], full['event_recall_ci95_high'])}; "
+        f"nuisance alarms/hour {_format_value(full['false_alarms_nuisance_per_hour_mean'], full['false_alarms_nuisance_per_hour_ci95_low'], full['false_alarms_nuisance_per_hour_ci95_high'])} | "
+        f"ablation_no_temporal_persistence: F1 {_format_value(no_persistence['f1_mean'], no_persistence['f1_ci95_low'], no_persistence['f1_ci95_high'])}; "
+        f"event recall {_format_value(no_persistence['event_recall_mean'], no_persistence['event_recall_ci95_low'], no_persistence['event_recall_ci95_high'])}; "
+        f"nuisance alarms/hour {_format_value(no_persistence['false_alarms_nuisance_per_hour_mean'], no_persistence['false_alarms_nuisance_per_hour_ci95_low'], no_persistence['false_alarms_nuisance_per_hour_ci95_high'])} | "
+        "Removing persistence raised mean F1 but also raised nuisance false alarms; event recall tied. |\n"
+    )
 
 
 def _write_simple_wins(stream: Any, rows: list[dict[str, Any]]) -> None:
@@ -632,6 +729,8 @@ def _load_existing_results(path: Path) -> list[dict[str, Any]]:
 
 
 def _bound_confidence_intervals(row: dict[str, Any]) -> None:
+    if row.get("method") == "forest_added_value":
+        return
     bounded = {"event_recall", "precision", "recall", "f1", "pr_auc"}
     for metric in _METRICS:
         low_key = f"{metric}_ci95_low"

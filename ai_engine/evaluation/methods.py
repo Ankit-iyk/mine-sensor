@@ -57,7 +57,7 @@ TEMPORAL_FEATURES = ("trend_slope", "persistence")
 
 
 class MethodSuite:
-    """Fit learned methods on one shared normal-only seed partition."""
+    """Fit learned methods on one shared event-free seed partition."""
 
     def __init__(self, training_rows: list[dict[str, Any]]) -> None:
         if len(training_rows) < 20:
