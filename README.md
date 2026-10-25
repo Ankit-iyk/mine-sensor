@@ -80,8 +80,7 @@ everywhere. Reproduce the full default run with
 generated with 12 test seeds; this run took **176.39 minutes**, so it exceeded
 the 20-minute target.
 
-The latest full validation reports **103 AI-engine tests passed** and
-**119 backend tests passed**. Rerun the test commands below for current results.
+Run both test suites with the commands below.
 
 ## Known limitations
 

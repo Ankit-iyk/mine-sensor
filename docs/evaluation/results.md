@@ -1,6 +1,6 @@
 # SUBSENSE reproducible detector evaluation
 
-Generated with `12` independent test seeds per scenario and noise model. Training seeds are the disjoint range `100000`–`100029`; simulator test seeds are `10000`–`10011` and shifted test seeds `200000`–`200011`. The shared learned-method training partition combines nominal simulator readings, slow baseline-drift nuisance readings, and nominal readings with added sensor noise; all training rows are event-free. All readings use the backend Kalman filter, rolling buffer, baseline tracker, and FeatureExtractor. Confidence intervals are two-sided 95% Student-t intervals across seeds (bounded metrics are truncated to valid ranges). Detection delay averages detected events only; event recall counts missed events in its denominator. PR-AUC is average precision. An `ANOMALOUS` current-system state counts as an alert; `MICRO_ANOMALY` does not. False alarms are rising edges per summed node-hour on the normal and nuisance controls.
+Generated with `12` independent test seeds per scenario and noise model. Training seeds are the disjoint range `100000`–`100029`; simulator test seeds are `10000`–`10011` and shifted test seeds `200000`–`200011`. The shared learned-method training partition combines nominal simulator readings, slow baseline-drift nuisance readings, and nominal readings with added sensor noise; all training rows are event-free. All readings use the backend Kalman filter, rolling buffer, baseline tracker, and FeatureExtractor. Confidence intervals are two-sided 95% Student-t intervals across seeds (bounded raw metrics are truncated to valid ranges; paired differences are not bounded). If only one seed has a finite metric, its point value is shown as a degenerate interval and is not an uncertainty estimate. Detection delay averages detected events only; event recall counts missed events in its denominator. PR-AUC is average precision. An `ANOMALOUS` current-system state counts as an alert; `MICRO_ANOMALY` does not. False alarms are rising edges per summed node-hour on the normal and nuisance controls.
 
 The shift set independently adds ±0.12° tilt noise, ±0.06 m/s² acceleration noise, and 0.8–1.2 s sampling intervals. Severity defaults to 1.0. `sensor_failure` represents a stuck tilt sensor plus zero acceleration; rejected/missing packets cannot be scored as feature vectors by the current backend pipeline. Baseline drift is a nuisance with `is_event=false`.
 
@@ -8,7 +8,7 @@ The shift set independently adds ±0.12° tilt noise, ±0.06 m/s² acceleration 
 
 All methods share the same extracted backend feature vectors. The fixed tilt detector alerts at 0.50° baseline deviation. The baseline z-score uses the training partition's mean and standard deviation of `tilt_deviation` and alerts at z ≥ 3.0. EWMA uses α = 0.20 and a 0.30° score threshold. CUSUM uses reference value k = 0.08°/sample and threshold 0.80. Isolation Forest uses 100 trees, contamination 0.05, seed 71. One-Class SVM uses an RBF kernel and ν = 0.05; Local Outlier Factor uses novelty mode, contamination 0.05, and up to 35 neighbors. Both SVM/LOF use a StandardScaler fit on the same event-free widened training rows as the Isolation Forest. `current_system` is the unchanged `AIEngineDetector` decision rule with that fitted Isolation Forest; only `ANOMALOUS` counts as an alert, while `MICRO_ANOMALY` does not. `current_system_spatial` applies the shared wrapper to current-system alerts. The wrapper requires three consecutive alerts per node or same-step alerts from at least two nodes in a zone. The fair `*_spatial` comparisons apply this same wrapper to each method's raw alerts. `baseline_deviation_only_spatial` removes the Isolation Forest and alerts at 0.11° baseline deviation before the wrapper; `isolation_forest_spatial` uses Isolation Forest alerts alone before the wrapper. `vibration_threshold` alerts at vibration intensity ≥ 0.35. `stuck_sensor_check` flags zero variance across tilt, acceleration magnitude and vibration intensity over 10 feature readings. These are evaluation methods, not changes to the production detector. The feature-group ablation `no_acceleration_features` is expected to be a no-op because the current Isolation Forest feature contract does not include accelerometer-derived columns.
 
-Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled hardware CSV input: `--real-csv PATH`.
+Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled CSV input: `--real-csv PATH` (the bundled placeholder files are synthetic only).
 
 ## Main results: simulator noise
 
@@ -105,7 +105,7 @@ Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled 
 | normal | current_system | n/a | n/a | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | n/a |
 | gradual_tilt | current_system | 1.000 [1.000, 1.000] | 7.167 [6.317, 8.016] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 0.919 [0.911, 0.927] | 0.958 [0.954, 0.962] | 0.973 [0.969, 0.977] |
 | step_tilt | current_system | 1.000 [1.000, 1.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.812 [0.791, 0.833] | 1.000 [1.000, 1.000] | 0.896 [0.883, 0.909] | 0.826 [0.793, 0.859] |
-| vibration_bursts | current_system | 0.083 [0.000, 0.267] | 5.000 | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.083 [0.000, 0.267] | 0.003 [0.000, 0.008] | 0.005 [0.000, 0.016] | 0.976 [0.954, 0.999] |
+| vibration_bursts | current_system | 0.083 [0.000, 0.267] | 5.000 [5.000, 5.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.083 [0.000, 0.267] | 0.003 [0.000, 0.008] | 0.005 [0.000, 0.016] | 0.976 [0.954, 0.999] |
 | persistent_offset | current_system | 1.000 [1.000, 1.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 0.989 [0.982, 0.997] |
 | multi_node_regional | current_system | 1.000 [1.000, 1.000] | 6.667 [4.980, 8.354] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 0.867 [0.860, 0.874] | 0.929 [0.925, 0.933] | 0.990 [0.988, 0.992] |
 | sensor_failure | current_system | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.459 [0.401, 0.516] |
@@ -185,7 +185,7 @@ Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled 
 | vibration_bursts | ewma | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.132 [0.076, 0.187] |
 | persistent_offset | ewma | 1.000 [1.000, 1.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] |
 | multi_node_regional | ewma | 1.000 [1.000, 1.000] | 17.378 [16.160, 18.596] | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 1.000 [1.000, 1.000] | 0.803 [0.792, 0.815] | 0.891 [0.884, 0.898] | 0.994 [0.992, 0.996] |
-| sensor_failure | ewma | 0.083 [0.000, 0.267] | 15.755 | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 0.083 [0.000, 0.267] | 0.001 [0.000, 0.003] | 0.002 [0.000, 0.006] | 0.526 [0.378, 0.673] |
+| sensor_failure | ewma | 0.083 [0.000, 0.267] | 15.755 [15.755, 15.755] | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 0.083 [0.000, 0.267] | 0.001 [0.000, 0.003] | 0.002 [0.000, 0.006] | 0.526 [0.378, 0.673] |
 | baseline_drift | ewma | n/a | n/a | 0.000 [0.000, 0.000] | 1.733 [0.000, 5.548] | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | n/a |
 | normal | cusum | n/a | n/a | 39.948 [34.429, 45.467] | 36.457 [32.069, 40.844] | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | n/a |
 | gradual_tilt | cusum | 1.000 [1.000, 1.000] | 1.244 [0.000, 2.629] | 39.948 [34.429, 45.467] | 36.457 [32.069, 40.844] | 0.327 [0.310, 0.345] | 0.986 [0.971, 1.000] | 0.491 [0.471, 0.510] | 0.920 [0.905, 0.935] |
@@ -332,6 +332,27 @@ These comparisons are read from the generated CSV. False-alarm figures are per s
 | Z-score vs current-system false alarms | baseline_z_score: normal 0.000 [0.000, 0.000]; nuisance 0.870 [0.000, 2.783] | current_system: normal 0.000 [0.000, 0.000]; nuisance 45.217 [34.147, 56.287] | Normal false-alarm rates are tied; compare nuisance rates as shown (the z-score is lower in this run). |
 | Full system vs no temporal persistence | current_system_spatial: F1 0.945 [0.941, 0.948]; event recall 1.000 [1.000, 1.000]; nuisance alarms/hour 6.087 [0.000, 13.271] | ablation_no_temporal_persistence: F1 0.958 [0.954, 0.962]; event recall 1.000 [1.000, 1.000]; nuisance alarms/hour 45.217 [34.147, 56.287] | Removing persistence raised mean F1 but also raised nuisance false alarms; event recall tied. |
 
+## Simulator gradual-tilt metric comparison
+
+Intervals are 95% CIs across 12 paired test seeds. `forest_added_value` is the paired full-system-minus-baseline delta, not an absolute detector result.
+
+| method | nuisance false alarms/hour (95% CI) | F1 (95% CI) |
+|---|---|---|
+| baseline_z_score | 0.870 [0.000, 2.783] | 0.964 [0.961, 0.967] |
+| current_system | 45.217 [34.147, 56.287] | 0.958 [0.954, 0.962] |
+| current_system_spatial | 6.087 [0.000, 13.271] | 0.945 [0.941, 0.948] |
+| ablation_no_temporal_persistence | 45.217 [34.147, 56.287] | 0.958 [0.954, 0.962] |
+| forest_added_value | -258.261 [-286.830, -229.692] | -0.022 [-0.030, -0.015] |
+
+Among absolute detector methods in this table, `baseline_z_score` has the lowest nuisance false-alarm rate (0.870/hour), while `ablation_no_temporal_persistence` has the highest F1 (0.958). The paired Isolation Forest delta reduces nuisance alarms by 258.261/hour but lowers F1 by 0.022; its F1 95% CI [-0.030, -0.015] excludes zero in the negative direction.
+
+## What these results do not show
+
+- These results use simulated data only.
+- No hardware recording has been evaluated.
+- They do not show that the Isolation Forest beats simple baselines unless the paired full-minus-baseline confidence interval excludes zero in the positive direction. Here gradual-tilt ΔF1 is -0.022 [-0.030, -0.015], which is significantly negative by this interval.
+- On simulator gradual tilt, z-score nuisance alarms are 0.870 [0.000, 2.783]/hour versus 45.217 [34.147, 56.287]/hour for current_system; z-score is lower on this metric.
+
 ## Where simple methods win
 
 | noise_model | scenario | best simple/comparable method | its F1 (95% CI) | current_system_spatial F1 (95% CI) |
@@ -372,7 +393,7 @@ These comparisons are read from the generated CSV. False-alarm figures are per s
 | normal | ablation_no_temporal_persistence | n/a | n/a | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | n/a |
 | gradual_tilt | ablation_no_temporal_persistence | 1.000 [1.000, 1.000] | 7.167 [6.317, 8.016] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 0.919 [0.911, 0.927] | 0.958 [0.954, 0.962] | 0.973 [0.969, 0.977] |
 | step_tilt | ablation_no_temporal_persistence | 1.000 [1.000, 1.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.812 [0.791, 0.833] | 1.000 [1.000, 1.000] | 0.896 [0.883, 0.909] | 0.826 [0.793, 0.859] |
-| vibration_bursts | ablation_no_temporal_persistence | 0.083 [0.000, 0.267] | 5.000 | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.083 [0.000, 0.267] | 0.003 [0.000, 0.008] | 0.005 [0.000, 0.016] | 0.976 [0.954, 0.999] |
+| vibration_bursts | ablation_no_temporal_persistence | 0.083 [0.000, 0.267] | 5.000 [5.000, 5.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.083 [0.000, 0.267] | 0.003 [0.000, 0.008] | 0.005 [0.000, 0.016] | 0.976 [0.954, 0.999] |
 | persistent_offset | ablation_no_temporal_persistence | 1.000 [1.000, 1.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 0.989 [0.982, 0.997] |
 | multi_node_regional | ablation_no_temporal_persistence | 1.000 [1.000, 1.000] | 6.667 [4.980, 8.354] | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 1.000 [1.000, 1.000] | 0.867 [0.860, 0.874] | 0.929 [0.925, 0.933] | 0.990 [0.988, 0.992] |
 | sensor_failure | ablation_no_temporal_persistence | 0.000 [0.000, 0.000] | n/a | 0.000 [0.000, 0.000] | 45.217 [34.147, 56.287] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.459 [0.401, 0.516] |

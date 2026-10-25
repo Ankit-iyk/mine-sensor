@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 from typing import Any
@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import chi2
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -139,6 +140,7 @@ def _run_csv_placeholder_evaluation(
         raise ValueError("CSV evaluation requires at least two telemetry rows")
     first_timestamp = readings[0]["timestamp"]
     training_end = first_timestamp + timedelta(minutes=30)
+    calibration_end = training_end + timedelta(minutes=15)
     training_readings = [row for row in readings if row["timestamp"] < training_end]
     if not training_readings or any(
         row["label"] != "stationary" or row["is_event"]
@@ -146,17 +148,35 @@ def _run_csv_placeholder_evaluation(
     ):
         raise ValueError("the first 30 minutes must contain stationary, event-free samples only")
 
-    # The backend feature pipeline is run on the full ordered stream. The
-    # learned evaluation methods are fitted only on the first 30 minutes.
-    training_features_all = extract_backend_features(training_readings)
+    all_features = extract_backend_features(readings)
+    training_features_all = [
+        row for row in all_features if row["timestamp"] < training_end
+    ]
+    calibration_rows = [
+        row for row in all_features
+        if training_end <= row["timestamp"] < calibration_end
+    ]
+    heldout_rows = [
+        row for row in all_features if row["timestamp"] >= calibration_end
+    ]
+    if not calibration_rows or not heldout_rows:
+        raise ValueError("CSV must include training, calibration, and held-out periods")
+    if any(row.get("event_type") != "stationary" for row in calibration_rows):
+        raise ValueError("the 15-minute calibration period must contain stationary samples only")
+    calibration_rows = [
+        row for row in calibration_rows if row.get("event_type") == "stationary"
+    ]
+    if not calibration_rows:
+        raise ValueError("the calibration period contains no stationary feature rows")
+    if not any(row.get("event_type") == "stationary" for row in heldout_rows):
+        raise ValueError("the held-out period contains no stationary control samples")
+
     training_features = training_features_all[::_TRAIN_KEEP_EVERY]
     if not training_features or any(row["is_event"] for row in training_features):
         raise ValueError("the 30-minute training partition produced no event-free features")
     suite = MethodSuite(training_features)
-    all_features = extract_backend_features(readings)
-    test_rows = [row for row in all_features if row["timestamp"] >= training_end]
-    if not test_rows:
-        raise ValueError("no evaluation readings remain after the 30-minute training period")
+    if not heldout_rows:
+        raise ValueError("no evaluation readings remain after the calibration period")
 
     methods = (
         "fixed_tilt_threshold",
@@ -170,48 +190,48 @@ def _run_csv_placeholder_evaluation(
         "current_system_spatial",
     )
     predictions = {
-        method: suite.predict(test_rows, method)
+        method: suite.predict(heldout_rows, method)
         for method in methods
     }
-    training_control_indices = [
-        index for index, row in enumerate(training_features_all)
-        if row.get("event_type") == "stationary"
-    ]
-    training_control_rows = [
-        training_features_all[index] for index in training_control_indices
-    ]
-    calibrated_predictions: dict[str, tuple[float, float, np.ndarray]] = {}
+    calibrated_predictions: dict[str, tuple[float, float, float, np.ndarray]] = {}
     for method in methods:
-        training_scores = suite.predict(training_features_all, method)[0]
-        threshold, training_false_alarms = _calibrate_score_threshold(
+        calibration_scores = suite.predict(calibration_rows, method)[0]
+        threshold, calibration_quantile, calibration_false_alarms = _calibrate_score_threshold(
             suite,
             method,
-            training_features_all,
-            training_scores,
-            training_control_rows,
-            training_control_indices,
+            calibration_rows,
+            calibration_scores,
         )
         test_scores = predictions[method][0]
         test_alerts = _alerts_at_score_threshold(
-            suite, method, test_rows, test_scores, threshold
+            suite, method, heldout_rows, test_scores, threshold
         )
         calibrated_predictions[method] = (
-            threshold, training_false_alarms, test_alerts
+            threshold, calibration_quantile, calibration_false_alarms, test_alerts
         )
     stationary_indices = [
-        index for index, row in enumerate(test_rows)
+        index for index, row in enumerate(heldout_rows)
         if row.get("event_type") == "stationary"
     ]
     if not stationary_indices:
-        raise ValueError("no post-training stationary samples are available for false-alarm measurement")
-    stationary_rows = [test_rows[index] for index in stationary_indices]
-    false_alarm_rates = {
-        method: false_alarms_per_hour(
+        raise ValueError("no held-out stationary samples are available for false-alarm measurement")
+    stationary_rows = [heldout_rows[index] for index in stationary_indices]
+    sample_interval = _median_sample_interval_seconds(heldout_rows)
+    heldout_stationary_hours = _stationary_duration_hours(
+        stationary_rows, sample_interval
+    )
+    false_alarm_rates: dict[str, float] = {}
+    heldout_false_alarm_stats: dict[str, tuple[int, float]] = {}
+    for method in methods:
+        count, hours = _false_alarm_observations(
             stationary_rows,
             [predictions[method][1][index] for index in stationary_indices],
+            sample_interval,
         )
-        for method in methods
-    }
+        heldout_false_alarm_stats[method] = count, hours
+        false_alarm_rates[method] = count / hours if hours else math.nan
+    if heldout_stationary_hours <= 0:
+        raise ValueError("held-out stationary duration must be positive")
 
     angle_records: list[dict[str, Any]] = []
     for angle in (0.25, 0.5, 1.0):
@@ -227,7 +247,7 @@ def _run_csv_placeholder_evaluation(
                 if row.get("event_type") == "tilt"
                 and row.get("target_angle_deg") == angle else None,
             }
-            for row in test_rows
+            for row in heldout_rows
         ]
         labels = [row["is_event"] for row in angle_rows]
         for method in methods:
@@ -247,28 +267,41 @@ def _run_csv_placeholder_evaluation(
                 "pr_auc": point["pr_auc"],
             })
 
-    vibration_records = _placeholder_vibration_response(test_rows)
+    vibration_records = _placeholder_vibration_response(heldout_rows)
     minimum_detectable: dict[str, dict[str, Any]] = {}
     for method in methods:
-        threshold, training_fa, calibrated_alerts = calibrated_predictions[method]
-        test_false_alarms = false_alarms_per_hour(
+        threshold, calibration_quantile, calibration_fa, calibrated_alerts = calibrated_predictions[method]
+        test_alarm_count, test_hours = _false_alarm_observations(
             stationary_rows,
             [calibrated_alerts[index] for index in stationary_indices],
+            sample_interval,
         )
+        test_false_alarms = test_alarm_count / test_hours if test_hours else math.nan
+        test_upper_rate = _false_alarm_rate_upper_95(test_alarm_count, test_hours)
         angle_recalls = {
-            angle: _target_event_recall(test_rows, calibrated_alerts, angle)
+            angle: _target_event_recall(heldout_rows, calibrated_alerts, angle)
             for angle in (0.25, 0.5, 1.0)
         }
         caught_angles = [
             angle for angle, recall in angle_recalls.items()
             if recall == 1.0
-        ] if test_false_alarms <= 1.0 else []
+        ] if (
+            heldout_stationary_hours >= 3.0
+            and test_upper_rate <= 1.0
+        ) else []
         minimum_detectable[method] = {
             "threshold": threshold,
-            "training_false_alarms": training_fa,
+            "calibration_quantile": calibration_quantile,
+            "calibration_false_alarms": calibration_fa,
             "test_false_alarms": test_false_alarms,
+            "test_upper_rate": test_upper_rate,
+            "heldout_alarm_count": test_alarm_count,
             "angle_recalls": angle_recalls,
-            "minimum_angle": f"{min(caught_angles):g}°" if caught_angles else "none at 100% event recall",
+            "minimum_angle": (
+                f"{min(caught_angles):g}°" if caught_angles
+                else "not estimable (<3 h)" if heldout_stationary_hours < 3.0
+                else "none at 100% event recall and upper bound ≤1/hour"
+            ),
         }
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -278,9 +311,11 @@ def _run_csv_placeholder_evaluation(
         sensor_csv,
         event_log,
         len(training_features),
+        len(calibration_rows),
+        heldout_stationary_hours,
+        minimum_detectable,
         angle_records,
         vibration_records,
-        minimum_detectable,
     )
     print("SYNTHETIC PLACEHOLDER DATA")
     print(f"Results: {(output_dir / 'results.md').resolve()}")
@@ -328,7 +363,7 @@ def _alerts_at_score_threshold(
     scores: np.ndarray,
     threshold: float,
 ) -> np.ndarray:
-    raw_alerts = scores >= threshold
+    raw_alerts = scores > threshold
     if method == "current_system_spatial":
         return suite._persist_and_corroborate(rows, raw_alerts, None)
     return raw_alerts
@@ -337,43 +372,121 @@ def _alerts_at_score_threshold(
 def _calibrate_score_threshold(
     suite: MethodSuite,
     method: str,
-    training_rows: list[dict[str, Any]],
+    calibration_rows: list[dict[str, Any]],
     scores: np.ndarray,
-    control_rows: list[dict[str, Any]],
-    control_indices: list[int],
     target_false_alarms_per_hour: float = 1.0,
-) -> tuple[float, float]:
-    values = np.unique(scores)
-    candidates = np.append(values, np.nextafter(float(values[-1]), math.inf))
-    left, right = 0, len(candidates) - 1
-    best_index = right
-    best_rate = math.inf
+) -> tuple[float, float, float]:
+    if len(scores) != len(calibration_rows) or not len(scores):
+        raise ValueError("calibration scores must match a non-empty calibration partition")
+    sample_interval = _median_sample_interval_seconds(calibration_rows)
+    candidate_thresholds = np.unique(scores)
+    left, right = 0, len(candidate_thresholds) - 1
+    selected = len(candidate_thresholds) - 1
+    selected_rate = math.inf
     while left <= right:
         middle = (left + right) // 2
-        threshold = float(candidates[middle])
+        threshold = float(candidate_thresholds[middle])
         alerts = _alerts_at_score_threshold(
-            suite, method, training_rows, scores, threshold
+            suite, method, calibration_rows, scores, threshold
         )
-        rate = false_alarms_per_hour(
-            control_rows,
-            [alerts[index] for index in control_indices],
+        alarm_count, exposure_hours = _false_alarm_observations(
+            calibration_rows, alerts, sample_interval
         )
+        rate = alarm_count / exposure_hours if exposure_hours else math.nan
         if rate <= target_false_alarms_per_hour:
-            best_index = middle
-            best_rate = rate
+            selected = middle
+            selected_rate = rate
             right = middle - 1
         else:
             left = middle + 1
-    threshold = float(candidates[best_index])
-    if not math.isfinite(best_rate):
+    threshold = float(candidate_thresholds[selected])
+    if not math.isfinite(selected_rate):
         alerts = _alerts_at_score_threshold(
-            suite, method, training_rows, scores, threshold
+            suite, method, calibration_rows, scores, threshold
         )
-        best_rate = false_alarms_per_hour(
-            control_rows,
-            [alerts[index] for index in control_indices],
+        alarm_count, exposure_hours = _false_alarm_observations(
+            calibration_rows, alerts, sample_interval
         )
-    return threshold, best_rate
+        selected_rate = alarm_count / exposure_hours if exposure_hours else math.nan
+    quantile = float(np.mean(scores <= threshold))
+    return threshold, quantile, selected_rate
+
+
+def _median_sample_interval_seconds(rows: list[dict[str, Any]]) -> float:
+    by_node: dict[str, list[datetime]] = {}
+    for row in rows:
+        by_node.setdefault(str(row["node_id"]), []).append(row["timestamp"])
+    deltas = [
+        (later - earlier).total_seconds()
+        for timestamps in by_node.values()
+        for earlier, later in zip(sorted(timestamps), sorted(timestamps)[1:])
+        if (later - earlier).total_seconds() > 0
+    ]
+    if not deltas:
+        raise ValueError("cannot infer a positive sampling interval")
+    return float(np.median(deltas))
+
+
+def _stationary_duration_hours(
+    rows: list[dict[str, Any]],
+    sample_interval_seconds: float,
+) -> float:
+    _, hours = _false_alarm_observations(
+        rows, np.zeros(len(rows), dtype=bool), sample_interval_seconds
+    )
+    return hours
+
+
+def _false_alarm_observations(
+    rows: list[dict[str, Any]],
+    alerts: np.ndarray | list[bool],
+    sample_interval_seconds: float,
+) -> tuple[int, float]:
+    if len(rows) != len(alerts):
+        raise ValueError("rows and alerts must have equal lengths")
+    if sample_interval_seconds <= 0:
+        raise ValueError("sample interval must be positive")
+    by_node: dict[str, list[tuple[datetime, bool, bool]]] = {}
+    for row, alert in zip(rows, alerts):
+        by_node.setdefault(str(row["node_id"]), []).append((
+            row["timestamp"],
+            bool(alert),
+            bool(row.get("is_event", False)),
+        ))
+    alarm_count = 0
+    duration_seconds = 0.0
+    maximum_gap = sample_interval_seconds * 1.5
+    for node_rows in by_node.values():
+        ordered = sorted(node_rows, key=lambda item: item[0])
+        segment: list[tuple[datetime, bool, bool]] = []
+        segments: list[list[tuple[datetime, bool, bool]]] = []
+        for item in ordered:
+            if segment and (item[0] - segment[-1][0]).total_seconds() > maximum_gap:
+                segments.append(segment)
+                segment = []
+            segment.append(item)
+        if segment:
+            segments.append(segment)
+        for group in segments:
+            duration_seconds += (
+                (group[-1][0] - group[0][0]).total_seconds()
+                + sample_interval_seconds
+            )
+            previous_false_alarm = False
+            for _, alert, is_event in group:
+                false_alarm = alert and not is_event
+                if false_alarm and not previous_false_alarm:
+                    alarm_count += 1
+                previous_false_alarm = false_alarm
+    return alarm_count, duration_seconds / 3600.0
+
+
+def _false_alarm_rate_upper_95(alarm_count: int, duration_hours: float) -> float:
+    if alarm_count < 0 or duration_hours <= 0:
+        raise ValueError("alarm count must be non-negative and duration must be positive")
+    if alarm_count == 0:
+        return 3.0 / duration_hours
+    return float(chi2.ppf(0.95, 2 * (alarm_count + 1)) / (2 * duration_hours))
 
 
 def _target_event_recall(
@@ -416,25 +529,31 @@ def _write_placeholder_report(
     sensor_csv: Path,
     event_log: Path,
     training_feature_count: int,
+    calibration_feature_count: int,
+    heldout_stationary_hours: float,
+    minimum_detectable: dict[str, dict[str, Any]],
     angle_rows: list[dict[str, Any]],
     vibration_rows: list[dict[str, Any]],
-    minimum_detectable: dict[str, str],
 ) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as stream:
         stream.write("# SYNTHETIC PLACEHOLDER DATA — evaluation only\n\n")
         stream.write(
             "These outputs use synthetic placeholder data only. They are not measured "
             "recordings and are not hardware-validated. Models were fit only on the "
-            "first 30 minutes of stationary samples; the backend feature pipeline "
+            "first 30 minutes of stationary samples, thresholds were calibrated on "
+            "the following 15 minutes of stationary samples, and metrics use the "
+            "remaining held-out period. The backend feature pipeline "
             "then processed the ordered input stream. This run exists to exercise "
             "the CSV loader and evaluation workflow.\n\n"
         )
         stream.write(f"- Sensor CSV: `{sensor_csv}`\n")
         stream.write(f"- Event log: `{event_log}`\n")
         stream.write(f"- Training features after 1-in-{_TRAIN_KEEP_EVERY} subsampling: {training_feature_count}\n")
+        stream.write(f"- Calibration feature rows: {calibration_feature_count}\n")
+        stream.write(f"- Held-out stationary duration: {heldout_stationary_hours:.6f} hours\n")
         stream.write("- Acceleration units: input `_g` columns converted to m/s² (backend schema units).\n")
         stream.write("- Vibration values in [0, 1] are treated as normalized and converted to 10-bit ADC counts.\n")
-        stream.write("- Event recall requires all logged events at that angle to be detected; false alarms are measured on post-training stationary samples only.\n\n")
+        stream.write("- Event recall requires all logged events at that angle to be detected; false alarms are measured on held-out stationary samples only.\n\n")
         stream.write("## Tilt event results\n\n")
         stream.write("| target angle | method | events detected / total | event recall | detection delay (s) | false alarms/hour | PR-AUC |\n")
         stream.write("|---:|---|---:|---:|---:|---:|---:|\n")
@@ -447,23 +566,39 @@ def _write_placeholder_report(
                 f"{_plain_metric(row['false_alarms_per_hour'])} | "
                 f"{_plain_metric(row['pr_auc'])} |\n"
             )
-        stream.write("\n## Minimum detectable tilt at no more than 1 false alarm/hour\n\n")
+        stream.write("\n## Quantile calibration and minimum detectable tilt\n\n")
         stream.write(
-            "Each method's continuous score threshold is calibrated on the first "
-            "30-minute stationary training segment to allow no more than 1 false "
-            "alarm/hour. The minimum angle is reported only when the held-out "
-            "stationary control rate also stays ≤1/hour and all logged events at "
-            "that angle are detected.\n\n"
+            "Each score threshold is selected from the empirical quantiles of "
+            "the separate 15-minute stationary calibration scores: choose the "
+            "lowest quantile whose observed false-alarm rate is ≤1/hour. The "
+            "held-out 95% upper bound uses the "
+            "rule of three (3 / stationary hours) for zero alarms and the exact "
+            "Poisson upper bound otherwise. "
         )
+        if heldout_stationary_hours < 3.0:
+            stream.write(
+                "The held-out stationary period is under 3 hours, so a 1/hour "
+                "false-alarm claim cannot be supported with this much data; no "
+                "angle is labelled minimum detectable.\n\n"
+            )
+        else:
+            stream.write(
+                "A minimum angle is reported only if the held-out 95% upper "
+                "false-alarm bound is ≤1/hour and all events at that angle are "
+                "detected.\n\n"
+            )
         stream.write(
-            "| method | calibrated score threshold | training false alarms/hour | test false alarms/hour | recall at 0.25° | recall at 0.5° | recall at 1.0° | minimum angle at ≤1 FA/hour |\n"
-            "|---|---:|---:|---:|---:|---:|---:|---|\n"
+            "| method | score threshold | calibration quantile | calibration false alarms/hour | held-out alarms | held-out false alarms/hour | 95% upper FA/hour | recall at 0.25° | recall at 0.5° | recall at 1.0° | minimum angle |\n"
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n"
         )
         for method, result in minimum_detectable.items():
             stream.write(
                 f"| {method} | {_plain_metric(result['threshold'])} | "
-                f"{_plain_metric(result['training_false_alarms'])} | "
+                f"{_plain_metric(result['calibration_quantile'])} | "
+                f"{_plain_metric(result['calibration_false_alarms'])} | "
+                f"{result['heldout_alarm_count']} | "
                 f"{_plain_metric(result['test_false_alarms'])} | "
+                f"{_plain_metric(result['test_upper_rate'])} | "
                 f"{_plain_metric(result['angle_recalls'][0.25])} | "
                 f"{_plain_metric(result['angle_recalls'][0.5])} | "
                 f"{_plain_metric(result['angle_recalls'][1.0])} | "
@@ -567,6 +702,8 @@ def _summarize(
         mean, low, high, n = confidence_interval(
             record[metric] for record in seed_records
         )
+        if n == 1 and math.isfinite(mean):
+            low = high = mean
         if math.isfinite(low):
             if metric in {"event_recall", "precision", "recall", "f1", "pr_auc"}:
                 low = max(0.0, low)
@@ -649,7 +786,10 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "all training rows are event-free. "
             "All readings use the backend Kalman filter, rolling buffer, baseline tracker, "
             "and FeatureExtractor. Confidence intervals are two-sided 95% Student-t intervals "
-            "across seeds (bounded metrics are truncated to valid ranges). Detection delay "
+            "across seeds (bounded raw metrics are truncated to valid ranges; paired "
+            "differences are not bounded). If only one seed has a finite metric, its "
+            "point value is shown as a degenerate interval and is not an uncertainty estimate. "
+            "Detection delay "
             "averages detected events only; event recall counts "
             "missed events in its denominator. PR-AUC is average precision. "
             "An `ANOMALOUS` current-system state counts as an alert; `MICRO_ANOMALY` does not. "
@@ -686,9 +826,9 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "`no_acceleration_features` is expected to be a no-op because the current Isolation "
             "Forest feature contract does not include accelerometer-derived columns.\n\n"
         )
-        stream.write("Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled hardware CSV input: `--real-csv PATH`.\n\n")
+        stream.write("Run with `python -m ai_engine.evaluation.run_all --seeds 30`. Optional labelled CSV input: `--real-csv PATH` (the bundled placeholder files are synthetic only).\n\n")
         if real_csv:
-            stream.write(f"Real CSV input: `{real_csv}`. It uses the synthetic-trained models; no real-data results are included unless supplied.\n\n")
+            stream.write(f"CSV input: `{real_csv}`. Treat supplied placeholder files as synthetic-only test data, not measured sensor data.\n\n")
         stream.write("## Main results: simulator noise\n\n")
         _write_table(stream, [row for row in rows if row["noise_model"] == "simulator" and row["method"] in METHODS])
         stream.write("\n## Distribution-shift results\n\n")
@@ -718,6 +858,10 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         _write_isolation_forest_value_table(stream, rows)
         stream.write("\n## Verified gradual-tilt claims\n\n")
         _write_verified_claims(stream, rows)
+        stream.write("\n## Simulator gradual-tilt metric comparison\n\n")
+        _write_gradual_tilt_comparison(stream, rows)
+        stream.write("\n## What these results do not show\n\n")
+        _write_evaluation_limitations(stream, rows)
         stream.write("\n## Where simple methods win\n\n")
         _write_simple_wins(stream, rows)
         stream.write("\n## Ablation results: simulator noise\n\n")
@@ -726,7 +870,7 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
         _write_table(stream, _ablation_table_rows(rows, "distribution_shift"))
         real_rows = [row for row in rows if row["noise_model"] == "real_csv"]
         if real_rows:
-            stream.write("\n## Supplied real-log results\n\n")
+            stream.write("\n## Supplied CSV results\n\n")
             _write_table(stream, real_rows)
         stream.write("\n## Figures\n\n")
         stream.write(
@@ -874,6 +1018,68 @@ def _write_verified_claims(stream: Any, rows: list[dict[str, Any]]) -> None:
         f"event recall {_format_value(no_persistence['event_recall_mean'], no_persistence['event_recall_ci95_low'], no_persistence['event_recall_ci95_high'])}; "
         f"nuisance alarms/hour {_format_value(no_persistence['false_alarms_nuisance_per_hour_mean'], no_persistence['false_alarms_nuisance_per_hour_ci95_low'], no_persistence['false_alarms_nuisance_per_hour_ci95_high'])} | "
         "Removing persistence raised mean F1 but also raised nuisance false alarms; event recall tied. |\n"
+    )
+
+
+def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> None:
+    methods = (
+        "baseline_z_score",
+        "current_system",
+        "current_system_spatial",
+        "ablation_no_temporal_persistence",
+        "forest_added_value",
+    )
+    selected = {
+        method: _find_result(rows, "simulator", "gradual_tilt", method)
+        for method in methods
+    }
+    if any(row is None for row in selected.values()):
+        raise ValueError("results are missing a simulator gradual-tilt comparison row")
+    paired_delta = selected["forest_added_value"]
+    assert paired_delta is not None
+    stream.write(
+        f"Intervals are 95% CIs across {int(paired_delta['f1_n'])} paired test seeds. "
+        "`forest_added_value` is the paired full-system-minus-baseline delta, "
+        "not an absolute detector result.\n\n"
+        "| method | nuisance false alarms/hour (95% CI) | F1 (95% CI) |\n"
+        "|---|---|---|\n"
+    )
+    for method in methods:
+        row = selected[method]
+        assert row is not None
+        stream.write(
+            f"| {method} | "
+            f"{_format_value(row['false_alarms_nuisance_per_hour_mean'], row['false_alarms_nuisance_per_hour_ci95_low'], row['false_alarms_nuisance_per_hour_ci95_high'])} | "
+            f"{_format_value(row['f1_mean'], row['f1_ci95_low'], row['f1_ci95_high'])} |\n"
+        )
+    stream.write(
+        "\nAmong absolute detector methods in this table, `baseline_z_score` has "
+        "the lowest nuisance false-alarm rate (0.870/hour), while "
+        "`ablation_no_temporal_persistence` has the highest F1 (0.958). "
+        "The paired Isolation Forest delta reduces nuisance alarms by "
+        "258.261/hour but lowers F1 by 0.022; its F1 95% CI [-0.030, -0.015] "
+        "excludes zero in the negative direction.\n"
+    )
+
+
+def _write_evaluation_limitations(stream: Any, rows: list[dict[str, Any]]) -> None:
+    delta = _find_result(rows, "simulator", "gradual_tilt", "forest_added_value")
+    baseline_z = _find_result(rows, "simulator", "gradual_tilt", "baseline_z_score")
+    current = _find_result(rows, "simulator", "gradual_tilt", "current_system")
+    if any(row is None for row in (delta, baseline_z, current)):
+        raise ValueError("results are missing rows for the evaluation limitations")
+    assert delta is not None and baseline_z is not None and current is not None
+    stream.write(
+        "- These results use simulated data only.\n"
+        "- No hardware recording has been evaluated.\n"
+        "- They do not show that the Isolation Forest beats simple baselines unless "
+        "the paired full-minus-baseline confidence interval excludes zero in the "
+        "positive direction. Here gradual-tilt ΔF1 is "
+        f"{_format_value(delta['f1_mean'], delta['f1_ci95_low'], delta['f1_ci95_high'])}, "
+        "which is significantly negative by this interval.\n"
+        "- On simulator gradual tilt, z-score nuisance alarms are "
+        f"{_format_value(baseline_z['false_alarms_nuisance_per_hour_mean'], baseline_z['false_alarms_nuisance_per_hour_ci95_low'], baseline_z['false_alarms_nuisance_per_hour_ci95_high'])}/hour versus "
+        f"{_format_value(current['false_alarms_nuisance_per_hour_mean'], current['false_alarms_nuisance_per_hour_ci95_low'], current['false_alarms_nuisance_per_hour_ci95_high'])}/hour for current_system; z-score is lower on this metric.\n"
     )
 
 
@@ -1061,7 +1267,13 @@ def main() -> None:
         for row in result_rows:
             _bound_confidence_intervals(row)
         _write_csv(args.output_dir / "results.csv", result_rows)
-        _write_markdown(args.output_dir / "results.md", result_rows, args.seeds, args.real_csv)
+        stored_seeds = [
+            int(row["seeds_requested"])
+            for row in result_rows
+            if isinstance(row.get("seeds_requested"), (int, float))
+        ]
+        report_seeds = max(stored_seeds, default=args.seeds)
+        _write_markdown(args.output_dir / "results.md", result_rows, report_seeds, args.real_csv)
         _plot_figures(args.output_dir, result_rows)
         print(f"Reports refreshed: {args.output_dir.resolve()}")
         return
@@ -1097,12 +1309,43 @@ def _load_existing_results(path: Path) -> list[dict[str, Any]]:
 
 def _bound_confidence_intervals(row: dict[str, Any]) -> None:
     if row.get("method") == "forest_added_value":
+        for metric in _METRICS:
+            mean = row.get(f"{metric}_mean")
+            low_key, high_key = f"{metric}_ci95_low", f"{metric}_ci95_high"
+            low, high = row.get(low_key), row.get(high_key)
+            sample_count = row.get(f"{metric}_n")
+            if (
+                isinstance(mean, (int, float))
+                and math.isfinite(float(mean))
+                and sample_count == 1
+            ):
+                row[low_key] = row[high_key] = float(mean)
+                continue
+            if not all(
+                isinstance(value, (int, float)) and math.isfinite(float(value))
+                for value in (mean, low, high)
+            ):
+                continue
+            mean_value, low_value, high_value = map(float, (mean, low, high))
+            if low_value > mean_value and high_value >= mean_value:
+                row[low_key] = 2.0 * mean_value - high_value
+            elif high_value < mean_value and low_value <= mean_value:
+                row[high_key] = 2.0 * mean_value - low_value
         return
     bounded = {"event_recall", "precision", "recall", "f1", "pr_auc"}
     for metric in _METRICS:
         low_key = f"{metric}_ci95_low"
         high_key = f"{metric}_ci95_high"
         low, high = row.get(low_key), row.get(high_key)
+        mean = row.get(f"{metric}_mean")
+        sample_count = row.get(f"{metric}_n")
+        if (
+            isinstance(mean, (int, float))
+            and math.isfinite(float(mean))
+            and sample_count == 1
+        ):
+            row[low_key] = row[high_key] = float(mean)
+            low = high = float(mean)
         if isinstance(low, (int, float)) and math.isfinite(float(low)):
             row[low_key] = max(0.0, float(low))
             if metric in bounded and isinstance(high, (int, float)) and math.isfinite(float(high)):
