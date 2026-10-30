@@ -1,0 +1,40 @@
+{
+  "manifest_scope": "selected model/protocol/confirmatory artifacts",
+  "artifacts": [
+    {
+      "path": "ai_engine/models/isolation_forest.joblib",
+      "size_bytes": 1117737,
+      "sha256": "5ce973c38507aa717989d5b77efc614a971fe98b9cab96e41c83a7cb55de4692"
+    },
+    {
+      "path": "docs/evaluation/PROTOCOL.md",
+      "size_bytes": 9919,
+      "sha256": "2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58"
+    },
+    {
+      "path": "docs/evaluation/confirmatory_v1/metadata.json",
+      "size_bytes": 4016,
+      "sha256": "032961bb49e1c5f3f4278867cba1309bffc040ddf3b7d9f13d111cc1de1d09b1"
+    },
+    {
+      "path": "docs/evaluation/confirmatory_v1/raw_metrics.csv",
+      "size_bytes": 2793678,
+      "sha256": "10aca840a947eee167317818bbc3f4dc3d54a02f261cd4b7244c812253bad970"
+    },
+    {
+      "path": "docs/evaluation/confirmatory_v1/results.csv",
+      "size_bytes": 218553,
+      "sha256": "f73525ede9ff6ef576eea386a8c0027ce0f2482648aab7e6d0529d9a29040c65"
+    },
+    {
+      "path": "docs/evaluation/confirmatory_v1/paired_tests.csv",
+      "size_bytes": 326625,
+      "sha256": "870d354169499c7ae160f32bf68d7a5d595be311c01006742994b1abdb766fcc"
+    },
+    {
+      "path": "docs/evaluation/confirmatory_v1/unsupported_conditions.csv",
+      "size_bytes": 293,
+      "sha256": "eae05615a5dbb7477bef21256e6c7d68014c8002d4d773eae18273054136d679"
+    }
+  ]
+}

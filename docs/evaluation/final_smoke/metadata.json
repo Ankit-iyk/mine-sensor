@@ -1,0 +1,105 @@
+{
+  "classification": "simulation-only evaluation; no physical sensor data",
+  "command_parameters": {
+    "seeds_per_condition": 1,
+    "training_seed_base": 100000,
+    "training_seed_count": 30,
+    "ordinary_test_seed_base": 990000,
+    "shifted_test_seed_base": 991000
+  },
+  "environment": {
+    "generated_at_utc": "2026-10-27T14:52:55.942063+00:00",
+    "python": "3.14.0",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "dependencies": {
+      "numpy": "2.5.3",
+      "pandas": "3.0.6",
+      "scikit-learn": "1.9.1",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "joblib": "1.6.0",
+      "fastapi": "0.141.1",
+      "pydantic": "2.13.5"
+    }
+  },
+  "training_feature_rows": 3150,
+  "scenario_registry": [
+    "normal",
+    "gradual_tilt",
+    "step_tilt",
+    "vibration_bursts",
+    "persistent_offset",
+    "multi_node_regional",
+    "sensor_failure",
+    "baseline_drift",
+    "acceleration_only",
+    "combined_vibration_acceleration",
+    "correlated_multi_node_drift",
+    "sensor_dropout",
+    "sampling_jitter",
+    "impulse_nuisance",
+    "phone_vibration_nuisance",
+    "mixed_overlapping_events"
+  ],
+  "methods": [
+    "fixed_tilt_threshold",
+    "fixed_tilt_threshold_spatial",
+    "baseline_z_score",
+    "baseline_z_score_spatial",
+    "baseline_deviation_only_spatial",
+    "ewma",
+    "cusum",
+    "isolation_forest",
+    "isolation_forest_spatial",
+    "one_class_svm",
+    "local_outlier_factor",
+    "current_system",
+    "current_system_spatial",
+    "vibration_threshold",
+    "stuck_sensor_check"
+  ],
+  "ablations": [
+    "no_baseline_deviation",
+    "no_temporal_persistence",
+    "no_spatial_corroboration",
+    "no_tilt_features",
+    "no_vibration_features",
+    "no_acceleration_features",
+    "no_temporal_features"
+  ],
+  "protocol_sha256": "2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58",
+  "source_sha256": {
+    "run_all.py": "2ab3c3201bd962e6a475281d90ab5b598a769da9dae804c92e83323438fdb3cc",
+    "datasets.py": "8c7b348d5918627aa329fc396c9bed83801576484e55d5244062353f1d704ae3",
+    "methods.py": "6d5d9e20c7fd0ded71523caefe083a988925ae70efabb4b392403b663d3b3ebc",
+    "backend_features.py": "8872382b3a907313cad35ddbac7124ff5690cfa56bd9f479d6197c11fd2d7688",
+    "metrics.py": "d26ce630b3dd5bb7ca49b33e7e56204680527112d2b595d4fc933977b2acc638",
+    "statistics.py": "e3ea052e95b3fb9c133d4f0a8e6f52a8432562b9b20173ff5ad4ce1f109551f9",
+    "adapter.py": "65f36ce5968e1352a1aa67f3e4cb60e9e1b1f5c85e6a29a18197ec82e3027030"
+  },
+  "model_artifact": {
+    "path": "ai_engine/models/isolation_forest.joblib",
+    "sha256": "5ce973c38507aa717989d5b77efc614a971fe98b9cab96e41c83a7cb55de4692"
+  },
+  "outputs": {
+    "summaries": "results.csv",
+    "raw_per_seed_metrics": "raw_metrics.csv",
+    "paired_inference": "paired_tests.csv",
+    "unsupported_conditions": "unsupported_conditions.csv",
+    "sha256": {
+      "results.csv": "b817be988c3e502c57544eed073b52b9f1e2e78380b5cb277fc9f5390235ccb9",
+      "raw_metrics.csv": "d197c5ba042bff62f8055f787e0113ccceac770a9ba9bea2b508c65a2a434819",
+      "paired_tests.csv": "c22ec933d435df21ce956d8f402dadf4f97e1accf04f11fc744597774e5d9611",
+      "unsupported_conditions.csv": "eae05615a5dbb7477bef21256e6c7d68014c8002d4d773eae18273054136d679",
+      "results.md": "09f0a245b55087ac4787e22dc37c77bd364e5436c8215d0e93686f0ed0b622a1",
+      "ablation_bars.png": "4ab47446c0c6de69f2d7f278f4866fed80fb16d74aa930f89d7e0e9490154668",
+      "detection_delay.png": "da1b57e792c8c6ae9b37596a1aa9c418aee2e5d51290228bf8ff67893a6024be",
+      "false_alarms_vs_recall.png": "258e70422585da5dec3f6999b63433b839ca81b90299a8832200d94bdd9467e8"
+    }
+  },
+  "limitations": [
+    "All generated observations are simulated.",
+    "sensor_dropout is explicitly unsupported for prediction by the compared feature methods.",
+    "Fixed operating points are not calibrated to a common false-alarm budget."
+  ]
+}

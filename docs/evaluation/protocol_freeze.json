@@ -1,0 +1,9 @@
+{
+  "protocol": "docs/evaluation/PROTOCOL.md",
+  "sha256": "2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58",
+  "frozen_at_utc": "2026-10-27T12:20:44.000753+00:00",
+  "git_commit": "784a895a6c176b6922d95476a2199a6ae7205622",
+  "git_branch": "ai-ml-development",
+  "status": "FROZEN BEFORE V1 CONFIRMATORY RUN",
+  "notes": "Protocol file hash is the immutable identifier; no commit was created because the checkout already contains uncommitted owner changes."
+}

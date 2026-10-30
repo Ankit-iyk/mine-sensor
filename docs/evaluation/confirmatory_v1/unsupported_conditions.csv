@@ -1,0 +1,2 @@
+scenario,status,reason
+sensor_dropout,UNSUPPORTED_FOR_DETECTOR_COMPARISON,"Generator omits packets and records the gap at recovery, but the compared feature-based methods have no declared packet-freshness detector; no result for outage detection is inferred from ordinary telemetry scores."
