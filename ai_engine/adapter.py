@@ -65,6 +65,7 @@ class AIEngineDetector(AnomalyDetector):
             "model_version": self._version,
             "confidence": None,
             "raw_score": isolation_result["raw_score"],
+            "detector_mode": "model",
         }
 
     def _map_features(self, backend_features: dict) -> dict:

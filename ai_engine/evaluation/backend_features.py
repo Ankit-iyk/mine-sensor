@@ -100,5 +100,14 @@ def extract_backend_features(readings: Iterable[dict[str, Any]]) -> list[dict[st
             "scenario": reading.get("scenario", "real_data"),
             "noise_model": reading.get("noise_model", "real_data"),
             "severity": reading.get("severity", 1.0),
+            "origin": reading.get("origin", "unspecified"),
+            "event_onset_step": reading.get("event_onset_step"),
+            "event_duration_steps": reading.get("event_duration_steps"),
+            "event_duration_seconds": reading.get("event_duration_seconds"),
+            "data_gap_before": bool(reading.get("data_gap_before", False)),
+            "data_gap_start_step": reading.get("data_gap_start_step"),
+            "data_gap_duration_steps": reading.get("data_gap_duration_steps"),
+            "data_gap_start_time": reading.get("data_gap_start_time"),
+            "data_gap_duration_seconds": reading.get("data_gap_duration_seconds"),
         })
     return output

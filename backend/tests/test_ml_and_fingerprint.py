@@ -30,6 +30,22 @@ def test_mock_detector_static_mode():
     assert out["anomaly_score"] == 0.05
     assert out["state"] == "NORMAL"
     assert out["model_version"] == "mock-0.1.0"
+    assert out["detector_mode"] == "mock"
+
+
+def test_missing_model_artifact_uses_observable_mock_fallback(monkeypatch, tmp_path):
+    from app.ml import loader
+
+    monkeypatch.setattr(loader, "_ACTIVE_DETECTOR", None)
+    monkeypatch.setattr(loader.settings, "ml_model_path", str(tmp_path / "missing.joblib"))
+    monkeypatch.setattr(loader.settings, "ml_model_version", "custom-production-label")
+
+    detector = loader.get_detector()
+    result = detector.predict({})
+
+    assert isinstance(detector, MockAnomalyDetector)
+    assert result["model_version"] == "custom-production-label"
+    assert result["detector_mode"] == "mock"
 
 
 def test_mock_detector_dynamic_mode_anomalous():

@@ -26,13 +26,37 @@ SCENARIOS = (
     "multi_node_regional",
     "sensor_failure",
     "baseline_drift",
+    "acceleration_only",
+    "combined_vibration_acceleration",
+    "correlated_multi_node_drift",
+    "sensor_dropout",
+    "sampling_jitter",
+    "impulse_nuisance",
+    "phone_vibration_nuisance",
+    "mixed_overlapping_events",
 )
-EVENT_SCENARIOS = set(SCENARIOS) - {"normal", "baseline_drift"}
+EVENT_SCENARIOS = {
+    "gradual_tilt", "step_tilt", "vibration_bursts", "persistent_offset",
+    "multi_node_regional", "sensor_failure", "acceleration_only",
+    "combined_vibration_acceleration", "correlated_multi_node_drift",
+    "mixed_overlapping_events",
+}
+NUISANCE_SCENARIOS = {
+    "baseline_drift", "sensor_dropout", "sampling_jitter",
+    "impulse_nuisance", "phone_vibration_nuisance",
+}
 NOISE_MODELS = ("simulator", "distribution_shift")
 NODE_IDS = ("N01", "N02", "N03")
 ZONE_ID = "Z01"
 EPISODE_SECONDS = 120
 EVENT_ONSET_STEP = 30
+EVENT_DURATION_STEPS = {
+    "gradual_tilt": 90, "step_tilt": 20, "vibration_bursts": 32,
+    "persistent_offset": 90, "multi_node_regional": 90,
+    "sensor_failure": 90, "acceleration_only": 30,
+    "combined_vibration_acceleration": 30, "correlated_multi_node_drift": 30,
+    "mixed_overlapping_events": 30,
+}
 
 
 def generate_episode(
@@ -86,30 +110,55 @@ def _generate_episode(
     last_good = {node_id: None for node_id in NODE_IDS}
     rows: list[dict[str, Any]] = []
     event_onsets: dict[str, str] = {}
+    data_gap_onsets: dict[str, str] = {}
     for step in range(EPISODE_SECONDS):
         for node_index, node_id in enumerate(NODE_IDS):
             node = nodes[node_id]
             affected = _is_affected(scenario, node_id)
             event_active = affected and _event_active(scenario, step)
-            if scenario == "gradual_tilt" and node_id == "N01" and step == EVENT_ONSET_STEP:
+            if scenario in {"gradual_tilt", "mixed_overlapping_events"} and node_id == "N01" and step == EVENT_ONSET_STEP:
                 node.set_scenario("gradual_tilt")
             if scenario == "multi_node_regional" and node_id in NODE_IDS and step == EVENT_ONSET_STEP:
                 node.set_scenario("multi_node_event")
-            if scenario == "persistent_offset" and event_active:
+            if scenario in {"persistent_offset", "mixed_overlapping_events"} and event_active:
                 raw = _build_offset_reading(node, severity)
+                if scenario == "mixed_overlapping_events" and EVENT_ONSET_STEP + 5 <= step < EVENT_ONSET_STEP + 10:
+                    raw["vibration"] = min(1023, int(700 * severity))
             elif scenario == "step_tilt" and event_active:
                 raw = _build_step_reading(node, severity)
             elif scenario == "sensor_failure" and event_active:
                 raw = _build_failure_reading(node, last_good[node_id])
+            elif scenario == "acceleration_only" and event_active:
+                raw = _build_acceleration_reading(node, severity)
+            elif scenario == "combined_vibration_acceleration" and event_active:
+                raw = _build_acceleration_reading(node, severity)
+                raw["vibration"] = min(1023, int(500 * severity))
+            elif scenario == "correlated_multi_node_drift" and event_active:
+                raw = _build_drift_reading(node, step, rate=0.008 * severity)
             elif scenario == "baseline_drift":
                 raw = _build_drift_reading(node, step)
             elif scenario == "vibration_bursts" and node_id == "N01":
                 raw = _build_burst_reading(node, step, severity)
+            elif scenario == "impulse_nuisance" and node_id == "N01":
+                raw = _build_impulse_reading(node, step, severity)
+            elif scenario == "phone_vibration_nuisance" and node_id == "N01":
+                raw = _build_phone_vibration_reading(node, step, severity)
             else:
                 raw = node.generate_reading()
 
-            interval = rng.uniform(0.8, 1.2) if noise_model == "distribution_shift" else 1.0
+            interval = (
+                rng.uniform(0.5, 1.5) if scenario == "sampling_jitter"
+                else rng.uniform(0.8, 1.2) if noise_model == "distribution_shift"
+                else 1.0
+            )
             clock_seconds[node_id] += interval
+            if scenario == "sensor_dropout" and node_id == "N01" and 50 <= step < 65:
+                # Model packet loss as absent observations; do not synthesize values.
+                if step == 50:
+                    data_gap_onsets[node_id] = (
+                        start + timedelta(seconds=clock_seconds[node_id])
+                    ).isoformat()
+                continue
             raw["timestamp"] = (start + timedelta(seconds=clock_seconds[node_id])).isoformat()
             raw["node_id"] = node_id
             raw["zone_id"] = ZONE_ID
@@ -127,8 +176,13 @@ def _generate_episode(
                 **raw,
                 "is_event": actual_event,
                 "event_onset_time": event_time,
-                "event_type": scenario if scenario in EVENT_SCENARIOS else (
-                    "baseline_drift_nuisance" if scenario == "baseline_drift" else "none"
+                "event_type": (
+                    scenario if scenario in EVENT_SCENARIOS
+                    else "baseline_drift_nuisance" if scenario == "baseline_drift"
+                    else scenario if scenario in {"sensor_dropout", "sampling_jitter"}
+                    else scenario if scenario in {"impulse_nuisance", "phone_vibration_nuisance"}
+                    and raw.get("scenario") == scenario
+                    else "none"
                 ),
                 "event_id": event_id,
                 "step": step,
@@ -136,12 +190,26 @@ def _generate_episode(
                 "scenario": scenario,
                 "noise_model": noise_model,
                 "severity": severity,
+                "origin": "simulation",
+                "event_onset_step": EVENT_ONSET_STEP if affected and scenario in EVENT_SCENARIOS else None,
+                "event_duration_steps": EVENT_DURATION_STEPS.get(scenario),
+                "event_duration_seconds": float(EVENT_DURATION_STEPS[scenario]) if scenario in EVENT_DURATION_STEPS else None,
+                "data_gap_before": scenario == "sensor_dropout" and node_id == "N01" and step == 65,
+                "data_gap_start_step": 50 if scenario == "sensor_dropout" and node_id == "N01" else None,
+                "data_gap_duration_steps": 15 if scenario == "sensor_dropout" and node_id == "N01" else None,
+                "data_gap_start_time": data_gap_onsets.get(node_id)
+                if scenario == "sensor_dropout" and node_id == "N01" and step == 65 else None,
+                "data_gap_duration_seconds": (
+                    (clock_seconds[node_id] - 50.0)
+                    if scenario == "sensor_dropout" and node_id == "N01" and step == 65
+                    else None
+                ),
             })
     return rows
 
 
 def _is_affected(scenario: str, node_id: str) -> bool:
-    if scenario == "multi_node_regional":
+    if scenario in {"multi_node_regional", "correlated_multi_node_drift"}:
         return node_id in ("N01", "N02", "N03")
     return scenario in EVENT_SCENARIOS and node_id == "N01"
 
@@ -153,6 +221,12 @@ def _event_active(scenario: str, step: int) -> bool:
         return step < EVENT_ONSET_STEP + 20
     if scenario == "vibration_bursts":
         return any(start <= step < start + 16 for start in (EVENT_ONSET_STEP, 75))
+    if scenario in {"acceleration_only", "combined_vibration_acceleration", "correlated_multi_node_drift"}:
+        return EVENT_ONSET_STEP <= step < EVENT_ONSET_STEP + 30
+    if scenario == "mixed_overlapping_events":
+        return EVENT_ONSET_STEP <= step < EVENT_ONSET_STEP + 30
+    if scenario in NUISANCE_SCENARIOS:
+        return False
     return scenario in EVENT_SCENARIOS
 
 
@@ -182,10 +256,18 @@ def _build_failure_reading(node: SensorNode, last_good: dict[str, Any] | None) -
     return raw
 
 
-def _build_drift_reading(node: SensorNode, step: int) -> dict[str, Any]:
+def _build_drift_reading(node: SensorNode, step: int, rate: float = 0.002) -> dict[str, Any]:
     raw = node.generate_reading()
-    drift = 0.002 * step
+    drift = rate * step
     return _set_tilt(raw, raw["tilt_x"] + drift, raw["tilt_y"] + drift * 0.7)
+
+
+def _build_acceleration_reading(node: SensorNode, severity: float) -> dict[str, Any]:
+    """Add a translational acceleration disturbance without changing tilt."""
+    raw = node.generate_reading()
+    raw["accel_x"] += 1.5 * severity
+    raw["scenario"] = "acceleration_disturbance"
+    return raw
 
 
 def _build_burst_reading(node: SensorNode, step: int, severity: float) -> dict[str, Any]:
@@ -193,6 +275,23 @@ def _build_burst_reading(node: SensorNode, step: int, severity: float) -> dict[s
     if any(start <= step < start + 16 for start in (EVENT_ONSET_STEP, 75)):
         raw["vibration"] = min(1023, int(random.randint(200, 800) * severity))
         raw["scenario"] = "vibration_bursts"
+    return raw
+
+
+def _build_impulse_reading(node: SensorNode, step: int, severity: float) -> dict[str, Any]:
+    raw = node.generate_reading()
+    if step in {40, 41, 80}:
+        raw["vibration"] = min(1023, int(700 * severity))
+        raw["scenario"] = "impulse_nuisance"
+    return raw
+
+
+def _build_phone_vibration_reading(node: SensorNode, step: int, severity: float) -> dict[str, Any]:
+    raw = node.generate_reading()
+    if 45 <= step < 50 or 90 <= step < 95:
+        phase = step % 5
+        raw["vibration"] = min(1023, int((250 + 80 * phase) * severity))
+        raw["scenario"] = "phone_vibration_nuisance"
     return raw
 
 

@@ -49,3 +49,17 @@ def test_same_step_multi_node_alerts_are_spatially_corroborated():
     alerts = suite._persist_and_corroborate([first, second], np.asarray([True, True]), None)
 
     assert alerts.tolist() == [True, True]
+
+
+def test_no_temporal_persistence_ablation_changes_single_sample_alert():
+    suite = object.__new__(MethodSuite)
+    rows = [_row(0)]
+    suite._current_predictions = lambda _rows: (np.asarray([1.0]), np.asarray([True]))
+
+    full = suite._persist_and_corroborate(rows, np.asarray([True]), None)
+    _, without_temporal_persistence = suite._component_ablation(
+        rows, "no_temporal_persistence"
+    )
+
+    assert full.tolist() == [False]
+    assert without_temporal_persistence.tolist() == [True]

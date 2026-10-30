@@ -19,6 +19,7 @@ class AnomalyInferenceOutput:
     model_version: str       # for traceability in database & logs
     confidence: Optional[float] = None
     raw_score: Optional[float] = None
+    detector_mode: str = "unknown"  # "model" or "mock"; prevents fallback ambiguity
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -27,6 +28,7 @@ class AnomalyInferenceOutput:
             "model_version": self.model_version,
             "confidence": self.confidence,
             "raw_score": self.raw_score,
+            "detector_mode": self.detector_mode,
         }
 
 
@@ -56,6 +58,7 @@ class AnomalyDetector(ABC):
             - model_version: str
             - confidence: float, optional
             - raw_score: float, optional
+            - detector_mode: "model", "mock", or "unknown"
         """
         pass
 

@@ -48,6 +48,7 @@ class MockAnomalyDetector(AnomalyDetector):
                 model_version=self._version,
                 confidence=0.99,
                 raw_score=0.05,
+                detector_mode="mock",
             )
             return output.to_dict()
 
@@ -84,5 +85,6 @@ class MockAnomalyDetector(AnomalyDetector):
             model_version=self._version,
             confidence=confidence,
             raw_score=raw_score,
+            detector_mode="mock",
         )
         return output.to_dict()

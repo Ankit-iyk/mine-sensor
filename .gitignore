@@ -82,3 +82,8 @@ desktop.ini
 
 # ── Next.js build info ───────────────────────────────
 tsconfig.tsbuildinfo
+
+# ── Pytest temp output and generated test reports ────
+.test-tmp/
+docs/evaluation/*.xml
+docs/evaluation/*_test_report.json

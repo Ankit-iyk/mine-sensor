@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import importlib.metadata
+import json
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import platform
 import sys
 from typing import Any
 
@@ -30,11 +34,12 @@ from ai_engine.evaluation.backend_features import extract_backend_features
 from ai_engine.evaluation.metrics import (
     confidence_interval, event_metrics, false_alarms_per_hour, point_metrics,
 )
+from ai_engine.evaluation.statistics import holm_adjust, paired_bootstrap_interval, paired_sign_flip_pvalue
 from ai_engine.evaluation.real_data import load_real_csv
 
 _TRAIN_SEED_BASE = 100_000
-_TEST_SEED_BASE = 10_000
-_SHIFT_SEED_BASE = 200_000
+_TEST_SEED_BASE = 300_000
+_SHIFT_SEED_BASE = 400_000
 _TRAIN_KEEP_EVERY = 10
 _TRAINING_CONDITIONS = (
     ("normal", "simulator"),
@@ -53,6 +58,8 @@ def run_evaluation(
     output_dir: Path | None = None,
     real_csv: Path | None = None,
     event_log: Path | None = None,
+    test_seed_base: int = _TEST_SEED_BASE,
+    shift_seed_base: int = _SHIFT_SEED_BASE,
 ) -> list[dict[str, Any]]:
     if seeds < 1:
         raise ValueError("--seeds must be at least 1")
@@ -63,8 +70,9 @@ def run_evaluation(
     training_rows = _training_features(seeds)
     suite = MethodSuite(training_rows)
     summaries: list[dict[str, Any]] = []
+    raw_metrics: list[dict[str, Any]] = []
 
-    for noise_model, seed_base in (("simulator", _TEST_SEED_BASE), ("distribution_shift", _SHIFT_SEED_BASE)):
+    for noise_model, seed_base in (("simulator", test_seed_base), ("distribution_shift", shift_seed_base)):
         episodes: dict[tuple[str, int], list[dict[str, Any]]] = {}
         control_cache: dict[tuple[str, int], tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]] = {}
         seed_metrics: dict[tuple[str, str, int], dict[str, float]] = {}
@@ -88,6 +96,13 @@ def run_evaluation(
                         controls,
                     )
                     seed_records.append(metrics)
+                    raw_metrics.append({
+                        "noise_model": noise_model,
+                        "scenario": scenario,
+                        "method": method,
+                        "seed": seed,
+                        **metrics,
+                    })
                     seed_metrics[(scenario, method, seed)] = metrics
                 summaries.append(_summarize(
                     noise_model, scenario, method, seed_records, seeds
@@ -102,9 +117,17 @@ def run_evaluation(
                     controls = _cached_control_predictions(
                         suite, episodes, control_cache, f"ablation_{ablation}", seed
                     )
-                    seed_records.append(_episode_metrics(
+                    metrics = _episode_metrics(
                         rows, scores, alerts, controls,
-                    ))
+                    )
+                    seed_records.append(metrics)
+                    raw_metrics.append({
+                        "noise_model": noise_model,
+                        "scenario": scenario,
+                        "method": f"ablation_{ablation}",
+                        "seed": seed,
+                        **metrics,
+                    })
                 summaries.append(_summarize(
                     noise_model, scenario, f"ablation_{ablation}", seed_records, seeds
                 ))
@@ -119,13 +142,203 @@ def run_evaluation(
                     for metric in _METRICS
                     if math.isfinite(full[metric]) and math.isfinite(baseline[metric])
                 })
+                raw_metrics.append({
+                    "noise_model": noise_model,
+                    "scenario": scenario,
+                    "method": "forest_added_value",
+                    "seed": seed,
+                    **paired_differences[-1],
+                })
             summaries.append(_summarize_paired_difference(
                 noise_model, scenario, paired_differences, seeds
             ))
     _write_csv(output_dir / "results.csv", summaries)
-    _write_markdown(output_dir / "results.md", summaries, seeds, None)
+    _write_csv(output_dir / "raw_metrics.csv", raw_metrics)
+    paired_tests = _paired_comparisons(raw_metrics)
+    _write_csv(output_dir / "paired_tests.csv", paired_tests)
+    _write_markdown(
+        output_dir / "results.md", summaries, seeds, None,
+        test_seed_base=test_seed_base, shift_seed_base=shift_seed_base,
+    )
     _plot_figures(output_dir, summaries)
+    _write_unsupported_conditions(output_dir / "unsupported_conditions.csv")
+    _write_run_metadata(
+        output_dir, seeds, test_seed_base, shift_seed_base, len(training_rows)
+    )
     return summaries
+
+
+def _write_unsupported_conditions(path: Path) -> None:
+    """Keep known unsupported evaluation conditions visible in each run."""
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=("scenario", "status", "reason"))
+        writer.writeheader()
+        writer.writerow({
+            "scenario": "sensor_dropout",
+            "status": "UNSUPPORTED_FOR_DETECTOR_COMPARISON",
+            "reason": (
+                "Generator omits packets and records the gap at recovery, but the compared "
+                "feature-based methods have no declared packet-freshness detector; no result "
+                "for outage detection is inferred from ordinary telemetry scores."
+            ),
+        })
+
+
+def _write_run_metadata(
+    output_dir: Path,
+    seeds: int,
+    test_seed_base: int,
+    shift_seed_base: int,
+    training_rows: int,
+) -> None:
+    def sha256(relative_path: str) -> str:
+        return hashlib.sha256((_ROOT / relative_path).read_bytes()).hexdigest()
+
+    protocol_path = _ROOT / "docs" / "evaluation" / "PROTOCOL.md"
+    metadata = {
+        "classification": "simulation-only evaluation; no physical sensor data",
+        "command_parameters": {
+            "seeds_per_condition": seeds,
+            "training_seed_base": _TRAIN_SEED_BASE,
+            "training_seed_count": max(30, seeds),
+            "ordinary_test_seed_base": test_seed_base,
+            "shifted_test_seed_base": shift_seed_base,
+        },
+        "environment": {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "dependencies": {
+                package: importlib.metadata.version(package)
+                for package in (
+                    "numpy", "pandas", "scikit-learn", "scipy", "matplotlib",
+                    "joblib", "fastapi", "pydantic",
+                )
+            },
+        },
+        "training_feature_rows": training_rows,
+        "scenario_registry": list(SCENARIOS),
+        "methods": list(METHODS),
+        "ablations": list(ABLATIONS),
+        "protocol_sha256": hashlib.sha256(protocol_path.read_bytes()).hexdigest(),
+        "source_sha256": {
+            "run_all.py": sha256("ai_engine/evaluation/run_all.py"),
+            "datasets.py": sha256("ai_engine/evaluation/datasets.py"),
+            "methods.py": sha256("ai_engine/evaluation/methods.py"),
+            "backend_features.py": sha256("ai_engine/evaluation/backend_features.py"),
+            "metrics.py": sha256("ai_engine/evaluation/metrics.py"),
+            "statistics.py": sha256("ai_engine/evaluation/statistics.py"),
+            "adapter.py": sha256("ai_engine/adapter.py"),
+        },
+        "model_artifact": {
+            "path": "ai_engine/models/isolation_forest.joblib",
+            "sha256": sha256("ai_engine/models/isolation_forest.joblib"),
+        },
+        "outputs": {
+            "summaries": "results.csv",
+            "raw_per_seed_metrics": "raw_metrics.csv",
+            "paired_inference": "paired_tests.csv",
+            "unsupported_conditions": "unsupported_conditions.csv",
+            "sha256": {
+                name: hashlib.sha256((output_dir / name).read_bytes()).hexdigest()
+                for name in (
+                    "results.csv", "raw_metrics.csv", "paired_tests.csv",
+                    "unsupported_conditions.csv", "results.md",
+                    "ablation_bars.png", "detection_delay.png",
+                    "false_alarms_vs_recall.png",
+                )
+            },
+        },
+        "limitations": [
+            "All generated observations are simulated.",
+            "sensor_dropout is explicitly unsupported for prediction by the compared feature methods.",
+            "Fixed operating points are not calibrated to a common false-alarm budget.",
+        ],
+    }
+    (output_dir / "metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _paired_comparisons(raw_metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compare prespecified methods on paired seed-level outcomes."""
+    lookup = {
+        (row["noise_model"], row["scenario"], row["method"], int(row["seed"])): row
+        for row in raw_metrics
+        if row["method"] != "forest_added_value"
+    }
+    comparisons: list[dict[str, Any]] = []
+
+    def add_comparison(
+        noise: str, scenario: str, candidate: str, reference: str, metric: str
+    ) -> None:
+        seeds = sorted({
+            key[3] for key in lookup
+            if key[0] == noise and key[1] == scenario
+            and key[2] in {candidate, reference}
+        })
+        differences = []
+        for seed in seeds:
+            first = lookup.get((noise, scenario, candidate, seed))
+            second = lookup.get((noise, scenario, reference, seed))
+            if first is None or second is None:
+                continue
+            a, b = first.get(metric), second.get(metric)
+            if a is None or b is None:
+                continue
+            try:
+                delta = float(a) - float(b)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(delta):
+                differences.append(delta)
+        mean, low, high, n = paired_bootstrap_interval(differences, rng=rng)
+        pvalue = paired_sign_flip_pvalue(differences, rng=rng)
+        comparisons.append({
+            "noise_model": noise,
+            "scenario": scenario,
+            "candidate": candidate,
+            "reference": reference,
+            "metric": metric,
+            "difference_sign": "candidate_minus_reference",
+            "n_paired_seeds": n,
+            "mean_difference": mean,
+            "bootstrap_ci95_low": low,
+            "bootstrap_ci95_high": high,
+            "p_value_sign_flip": pvalue,
+        })
+
+    rng = np.random.default_rng(20261027)
+    family_keys = sorted({(row["noise_model"], row["scenario"]) for row in lookup.values()})
+    for noise, scenario in family_keys:
+        for method in METHODS:
+            if method != "baseline_z_score":
+                for metric in ("event_recall", "false_alarms_nuisance_per_hour"):
+                    add_comparison(noise, scenario, method, "baseline_z_score", metric)
+        for metric in _METRICS:
+            add_comparison(
+                noise, scenario, "current_system_spatial",
+                "baseline_deviation_only_spatial", metric,
+            )
+        for ablation in ABLATIONS:
+            for metric in ("event_recall", "false_alarms_nuisance_per_hour"):
+                add_comparison(
+                    noise, scenario, f"ablation_{ablation}",
+                    "current_system_spatial", metric,
+                )
+
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for index, row in enumerate(comparisons):
+        grouped.setdefault((row["noise_model"], row["scenario"]), []).append(index)
+    for indexes in grouped.values():
+        adjusted = holm_adjust(comparisons[index]["p_value_sign_flip"] for index in indexes)
+        for index, value in zip(indexes, adjusted):
+            comparisons[index]["p_value_holm"] = value
+            comparisons[index]["adjusted_test"] = (
+                "statistically_different_at_0.05" if value < 0.05
+                else "inconclusive"
+            )
+    return comparisons
 
 
 def _run_csv_placeholder_evaluation(
@@ -772,15 +985,23 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
             })
 
 
-def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv: Path | None) -> None:
+def _write_markdown(
+    path: Path,
+    rows: list[dict[str, Any]],
+    seeds: int,
+    real_csv: Path | None,
+    *,
+    test_seed_base: int = _TEST_SEED_BASE,
+    shift_seed_base: int = _SHIFT_SEED_BASE,
+) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as stream:
         stream.write("# SUBSENSE reproducible detector evaluation\n\n")
         stream.write(
             f"Generated with `{seeds}` independent test seeds per scenario and noise model. "
             f"Training seeds are the disjoint range `{_TRAIN_SEED_BASE}`–"
             f"`{_TRAIN_SEED_BASE + max(30, seeds) - 1}`; simulator test seeds are "
-            f"`{_TEST_SEED_BASE}`–`{_TEST_SEED_BASE + seeds - 1}` and shifted test seeds "
-            f"`{_SHIFT_SEED_BASE}`–`{_SHIFT_SEED_BASE + seeds - 1}`. "
+            f"`{test_seed_base}`–`{test_seed_base + seeds - 1}` and shifted test seeds "
+            f"`{shift_seed_base}`–`{shift_seed_base + seeds - 1}`. "
             "The shared learned-method training partition combines nominal simulator readings, "
             "slow baseline-drift nuisance readings, and nominal readings with added sensor noise; "
             "all training rows are event-free. "
@@ -801,6 +1022,12 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "represents a stuck tilt sensor plus zero acceleration; rejected/missing packets "
             "cannot be scored as feature vectors by the current backend pipeline. "
             "Baseline drift is a nuisance with `is_event=false`.\n\n"
+        )
+        stream.write(
+            "The `sensor_dropout` scenario removes packets and records the recovery gap. "
+            "Packet-loss detection is UNSUPPORTED for these feature-based comparators because "
+            "none implements a freshness alarm; see `unsupported_conditions.csv`. New scenario "
+            "magnitudes are simulation assumptions, not sensor specifications.\n\n"
         )
         stream.write("## Method and threshold protocol\n\n")
         stream.write(
@@ -856,6 +1083,20 @@ def _write_markdown(path: Path, rows: list[dict[str, Any]], seeds: int, real_csv
             "together with baseline-deviation thresholding.\n\n"
         )
         _write_isolation_forest_value_table(stream, rows)
+        stream.write(
+            "\nIn the implementation, each paired value is `full[metric] - baseline[metric]`, "
+            "where `full` is `current_system_spatial` and `baseline` is "
+            "`baseline_deviation_only_spatial`.\n"
+        )
+        stream.write("\n## Where each method wins\n\n")
+        stream.write(
+            "Winners are selected by highest mean F1 and lowest mean nuisance false alarms "
+            "per hour among the 15 ordinary methods; exact mean ties are all reported. "
+            "The comparison status is for `baseline_z_score` relative to "
+            "`current_system_spatial`; overlapping 95% confidence intervals are labelled "
+            "`tied` as a descriptive rule, not a significance test.\n\n"
+        )
+        _write_scenario_winners(stream, rows)
         stream.write("\n## Verified gradual-tilt claims\n\n")
         _write_verified_claims(stream, rows)
         stream.write("\n## Simulator gradual-tilt metric comparison\n\n")
@@ -983,6 +1224,95 @@ def _write_isolation_forest_value_table(stream: Any, rows: list[dict[str, Any]])
                 f"{_format_value(delta['false_alarms_normal_per_hour_mean'], delta['false_alarms_normal_per_hour_ci95_low'], delta['false_alarms_normal_per_hour_ci95_high'])} | "
                 f"{_format_value(delta['false_alarms_nuisance_per_hour_mean'], delta['false_alarms_nuisance_per_hour_ci95_low'], delta['false_alarms_nuisance_per_hour_ci95_high'])} |\n"
             )
+
+
+def _write_scenario_winners(stream: Any, rows: list[dict[str, Any]]) -> None:
+    stream.write(
+        "| noise_model | scenario | best F1 method(s), mean [95% CI] | "
+        "fewest nuisance false alarms/hour method(s), mean [95% CI] | "
+        "baseline_z_score vs current_system_spatial: F1 | nuisance false alarms |\n"
+        "|---|---|---|---|---|---|\n"
+    )
+    groups = sorted({
+        (row["noise_model"], row["scenario"])
+        for row in rows
+        if row["method"] in METHODS
+    })
+    for noise_model, scenario in groups:
+        candidates = [
+            row for row in rows
+            if row["noise_model"] == noise_model
+            and row["scenario"] == scenario
+            and row["method"] in METHODS
+        ]
+        f1_candidates = [
+            row for row in candidates
+            if math.isfinite(float(row["f1_mean"]))
+        ]
+        nuisance_candidates = [
+            row for row in candidates
+            if math.isfinite(float(row["false_alarms_nuisance_per_hour_mean"]))
+        ]
+        if not f1_candidates or not nuisance_candidates:
+            raise ValueError(f"results lack finite winner metrics for {noise_model}/{scenario}")
+
+        best_f1 = max(float(row["f1_mean"]) for row in f1_candidates)
+        best_f1_rows = [
+            row for row in f1_candidates
+            if float(row["f1_mean"]) == best_f1
+        ]
+        fewest_nuisance = min(
+            float(row["false_alarms_nuisance_per_hour_mean"])
+            for row in nuisance_candidates
+        )
+        fewest_nuisance_rows = [
+            row for row in nuisance_candidates
+            if float(row["false_alarms_nuisance_per_hour_mean"]) == fewest_nuisance
+        ]
+        f1_winners = "; ".join(
+            f"`{row['method']}` {_format_value(row['f1_mean'], row['f1_ci95_low'], row['f1_ci95_high'])}"
+            for row in best_f1_rows
+        )
+        nuisance_winners = "; ".join(
+            f"`{row['method']}` "
+            f"{_format_value(row['false_alarms_nuisance_per_hour_mean'], row['false_alarms_nuisance_per_hour_ci95_low'], row['false_alarms_nuisance_per_hour_ci95_high'])}"
+            for row in fewest_nuisance_rows
+        )
+        z_score = _find_result(rows, noise_model, scenario, "baseline_z_score")
+        current = _find_result(rows, noise_model, scenario, "current_system_spatial")
+        if z_score is None or current is None:
+            raise ValueError(
+                f"results lack z-score/current-system comparison rows for {noise_model}/{scenario}"
+            )
+        f1_comparison = _compare_confidence_intervals(z_score, current, "f1", lower_is_better=False)
+        nuisance_comparison = _compare_confidence_intervals(
+            z_score, current, "false_alarms_nuisance_per_hour", lower_is_better=True
+        )
+        stream.write(
+            f"| {noise_model} | {scenario} | {f1_winners} | {nuisance_winners} | "
+            f"{f1_comparison} | {nuisance_comparison} |\n"
+        )
+
+
+def _compare_confidence_intervals(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    metric: str,
+    *,
+    lower_is_better: bool,
+) -> str:
+    first_low = float(first[f"{metric}_ci95_low"])
+    first_high = float(first[f"{metric}_ci95_high"])
+    second_low = float(second[f"{metric}_ci95_low"])
+    second_high = float(second[f"{metric}_ci95_high"])
+    if max(first_low, second_low) <= min(first_high, second_high):
+        return "tied"
+    first_mean = float(first[f"{metric}_mean"])
+    second_mean = float(second[f"{metric}_mean"])
+    first_is_better = (
+        first_mean < second_mean if lower_is_better else first_mean > second_mean
+    )
+    return "better" if first_is_better else "worse"
 
 
 def _write_verified_claims(stream: Any, rows: list[dict[str, Any]]) -> None:
@@ -1256,6 +1586,10 @@ def main() -> None:
     parser.add_argument("--real-csv", type=Path, help="CSV input path; bundled placeholder input is synthetic only.")
     parser.add_argument("--event-log", type=Path, help="Event interval CSV used with --real-csv.")
     parser.add_argument("--output-dir", type=Path, default=_ROOT / "docs" / "evaluation")
+    parser.add_argument("--test-seed-base", type=int, default=_TEST_SEED_BASE,
+                        help="First simulator test seed (default: frozen v1 confirmatory family).")
+    parser.add_argument("--shift-seed-base", type=int, default=_SHIFT_SEED_BASE,
+                        help="First shifted-noise test seed (default: frozen v1 confirmatory family).")
     parser.add_argument(
         "--refresh-reports",
         action="store_true",
@@ -1278,9 +1612,11 @@ def main() -> None:
         print(f"Reports refreshed: {args.output_dir.resolve()}")
         return
     if args.real_csv:
-        run_evaluation(args.seeds, args.output_dir, args.real_csv, args.event_log)
+        run_evaluation(args.seeds, args.output_dir, args.real_csv, args.event_log,
+                       args.test_seed_base, args.shift_seed_base)
         return
-    result_rows = run_evaluation(args.seeds, args.output_dir, args.real_csv, args.event_log)
+    result_rows = run_evaluation(args.seeds, args.output_dir, args.real_csv, args.event_log,
+                                 args.test_seed_base, args.shift_seed_base)
     print(f"Evaluation complete: {len(result_rows)} result rows")
     print(f"Outputs: {args.output_dir.resolve()}")
     _print_winners(result_rows)

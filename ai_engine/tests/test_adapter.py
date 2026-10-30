@@ -1,3 +1,5 @@
+import pytest
+
 from ai_engine import adapter
 from ai_engine.adapter import AIEngineDetector
 
@@ -30,6 +32,7 @@ def test_adapter_uses_backend_deviations_for_anomalous_state(monkeypatch):
     )
 
     assert result["state"] == "ANOMALOUS"
+    assert result["detector_mode"] == "model"
 
 
 def test_adapter_classifies_small_backend_deviations_as_micro_anomaly(monkeypatch):
@@ -52,3 +55,23 @@ def test_adapter_keeps_model_inliers_normal_even_with_large_deviation(monkeypatc
     )
 
     assert result["state"] == "NORMAL"
+
+
+def test_adapter_maps_lower_isolation_forest_scores_to_higher_anomaly_scores(monkeypatch):
+    detector = AIEngineDetector()
+    detector._model = object()
+    raw_scores = iter((0.4, -0.4))
+
+    def score_sample(_model, _features):
+        raw_score = next(raw_scores)
+        return {"is_anomalous": raw_score < 0, "raw_score": raw_score}
+
+    monkeypatch.setattr(adapter, "score_sample", score_sample)
+    features = {"tilt_deviation": 0.2, "baseline_deviation": 0.2}
+
+    inlier = detector.predict(features)
+    outlier = detector.predict(features)
+
+    assert inlier["anomaly_score"] == pytest.approx(0.1)
+    assert outlier["anomaly_score"] == pytest.approx(0.9)
+    assert inlier["detector_mode"] == outlier["detector_mode"] == "model"

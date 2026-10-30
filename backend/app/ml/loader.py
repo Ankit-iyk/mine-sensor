@@ -49,6 +49,12 @@ def get_detector() -> AnomalyDetector:
         except Exception as exc:
             logger.error("failed_to_load_ml_model", path=model_path, error=str(exc))
             logger.info("fallback_to_mock_detector")
+    else:
+        logger.warning(
+            "ml_model_artifact_missing_falling_back_to_mock",
+            path=model_path or None,
+            reason="no_model_path_configured" if not model_path else "artifact_not_found",
+        )
 
     _ACTIVE_DETECTOR = MockAnomalyDetector(version=settings.ml_model_version)
     logger.info("using_mock_detector", version=_ACTIVE_DETECTOR.version)
