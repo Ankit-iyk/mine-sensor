@@ -4,6 +4,10 @@
 
 The sensor samples are at 10 Hz with perfectly regular 0.1-second timestamps. These files exist only to test the CSV loader and evaluation workflow. Replace them with measured recordings before drawing conclusions about sensor performance.
 
+`sensor_data.csv` contains 38,700 data rows (excluding its header), from
+`2026-10-24T10:15:00+05:30` through `2026-10-24T11:19:29.900+05:30`.
+The exact timestamp span is 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds).
+
 Run the focused evaluation from the repository root:
 
 ```powershell

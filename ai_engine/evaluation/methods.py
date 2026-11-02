@@ -176,7 +176,7 @@ class MethodSuite:
         base_rows = [_ablate_row(row, None) for row in rows]
         scores, raw = self._current_predictions(base_rows)
         if ablation == "no_temporal_persistence":
-            return scores, np.logical_or(raw, _spatial_only(rows, raw))
+            return scores, raw
         return scores, _persist(raw, rows, minimum=3)
 
     def _sequential_scores(self, rows: list[dict[str, Any]], method: str) -> np.ndarray:

@@ -1088,6 +1088,19 @@ def _write_markdown(
             "where `full` is `current_system_spatial` and `baseline` is "
             "`baseline_deviation_only_spatial`.\n"
         )
+        stream.write(
+            "\nThe paired-difference calculation in `run_all.py` is:\n\n"
+            "```python\n"
+            "paired_differences.append({\n"
+            "    metric: full[metric] - baseline[metric]\n"
+            "    for metric in _METRICS\n"
+            "    if math.isfinite(full[metric]) and math.isfinite(baseline[metric])\n"
+            "})\n"
+            "```\n\n"
+            "The sign convention is full system minus no-forest baseline: positive "
+            "F1/event-recall deltas favor the full system, while positive false-alarm "
+            "deltas mean more false alarms. Negative values mean the reverse.\n"
+        )
         stream.write("\n## Where each method wins\n\n")
         stream.write(
             "Winners are selected by highest mean F1 and lowest mean nuisance false alarms "
@@ -1349,6 +1362,14 @@ def _write_verified_claims(stream: Any, rows: list[dict[str, Any]]) -> None:
         f"nuisance alarms/hour {_format_value(no_persistence['false_alarms_nuisance_per_hour_mean'], no_persistence['false_alarms_nuisance_per_hour_ci95_low'], no_persistence['false_alarms_nuisance_per_hour_ci95_high'])} | "
         "Removing persistence raised mean F1 but also raised nuisance false alarms; event recall tied. |\n"
     )
+    stream.write(
+        "\nThe ablation deliberately returns raw current-system alerts without the "
+        "three-consecutive-alert persistence filter. Its spatial helper only selects "
+        "alerts already present in the raw alert array, so OR-ing that subset with "
+        "the raw array leaves `ablation_no_temporal_persistence` equal to "
+        "`current_system`. It is not a no-op relative to `current_system_spatial`: "
+        "that method applies persistence before spatial corroboration.\n"
+    )
 
 
 def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> None:
@@ -1383,12 +1404,9 @@ def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> N
             f"{_format_value(row['f1_mean'], row['f1_ci95_low'], row['f1_ci95_high'])} |\n"
         )
     stream.write(
-        "\nAmong absolute detector methods in this table, `baseline_z_score` has "
-        "the lowest nuisance false-alarm rate (0.870/hour), while "
-        "`ablation_no_temporal_persistence` has the highest F1 (0.958). "
-        "The paired Isolation Forest delta reduces nuisance alarms by "
-        "258.261/hour but lowers F1 by 0.022; its F1 95% CI [-0.030, -0.015] "
-        "excludes zero in the negative direction.\n"
+        "\nThe values in this table are generated from the corresponding rows in "
+        "`results.csv`; `forest_added_value` is a paired difference, not an absolute "
+        "detector result.\n"
     )
 
 
