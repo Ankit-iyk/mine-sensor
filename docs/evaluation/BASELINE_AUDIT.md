@@ -33,10 +33,10 @@ The only tracked matching copies are under `docs/evaluation/placeholder_data/`. 
 
 | File | Shape | SHA-256 | Verified coverage / contents |
 |---|---:|---|---|
-| `placeholder_data/sensor_data.csv` | 38,700 rows × 9 columns | `0b157dbc00fd3f3a4133b52e9db46b7a0d2521deb06edef1783f1d5c830052` | 2026-10-24 10:15:00 to 11:19:29.900 +05:30; 3,869.9 s (64.498 min); median interval 0.0999999 s, min 0.0999999, max 0.10000014; no nonpositive intervals, no gaps >0.15 s, no duplicate full rows. Columns: timestamp, tilt_x_deg, tilt_y_deg, accel_x_g, accel_y_g, accel_z_g, vibration, event_label, event_id. |
+| `placeholder_data/sensor_data.csv` | 38,700 rows × 9 columns | `0b157dbc00fd3f3a4133b52e9db46b7a0d2521deb06edef1783f1d5c830052` | 2026-10-24 10:15:00 to 11:19:29.900 +05:30; exact span 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds); median interval 0.0999999 s, min 0.0999999, max 0.10000014; no nonpositive intervals, no gaps >0.15 s, no duplicate full rows. Columns: timestamp, tilt_x_deg, tilt_y_deg, accel_x_g, accel_y_g, accel_z_g, vibration, event_label, event_id. |
 | `placeholder_data/event_log.csv` | 16 rows × 7 columns | `def5a85984d343cbc04f54c1ea128d3fa05e0535e1dd85de6e3c916e56e6cf9b` | One event per ID: 10 tilt, 5 tap, 1 phone_vibration. Columns: event_id, event_type, target_angle_deg, axis, start_timestamp, duration_s, note. |
 
-No two-hour CSV copy was found in tracked files. The verified sensor span is about 64.5 minutes, not two hours. Timestamp span and continuous cadence agree for this file; its placeholder provenance still does not make it a physical recording.
+No two-hour CSV copy was found in tracked files. The verified 38,700-row sensor file spans exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds). Timestamp span and continuous cadence agree for this file; its placeholder provenance still does not make it a physical recording.
 
 ## Services and dashboard
 

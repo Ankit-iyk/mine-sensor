@@ -19,7 +19,8 @@ import structlog
 from typing import Any
 
 from app.ingestion.schemas import TelemetryReading, ValidationResult
-from app.ingestion.device_auth import is_valid_hardware_device_key
+from app.ingestion.device_auth import classify_telemetry_payload
+from app.ingestion.source_tracker import telemetry_source_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +42,7 @@ def handle_message(topic: str, raw_payload: bytes) -> None:
     """
     # ── Step 1: JSON decode ──────────────────────────
     try:
-        payload: dict[str, Any] = json.loads(raw_payload.decode("utf-8"))
+        payload: Any = json.loads(raw_payload.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         logger.warning(
             "mqtt_malformed_json",
@@ -51,14 +52,21 @@ def handle_message(topic: str, raw_payload: bytes) -> None:
         )
         return
 
-    device_key = payload.pop("hardware_device_key", None)
-    if payload.get("source") == "hardware" and not is_valid_hardware_device_key(device_key):
+    if not isinstance(payload, dict):
+        logger.warning(
+            "mqtt_invalid_payload_root",
+            topic=topic,
+        )
+        return
+
+    clean_payload, auth = classify_telemetry_payload(payload)
+    if not auth.authenticated and payload.get("source") != "simulator":
         logger.warning(
             "hardware_telemetry_unauthenticated",
             topic=topic,
             transport="mqtt",
+            reason=auth.reason,
         )
-        payload["source"] = "unknown"
 
     # ── Step 2: Duplicate detection ──────────────────
     msg_hash = _quick_hash(raw_payload)
@@ -68,7 +76,7 @@ def handle_message(topic: str, raw_payload: bytes) -> None:
     _record_message(topic, msg_hash)
 
     # ── Step 3: Schema validation ────────────────────
-    result = _validate(topic, payload)
+    result = _validate(topic, clean_payload)
 
     if not result.valid:
         logger.warning(
@@ -83,6 +91,10 @@ def handle_message(topic: str, raw_payload: bytes) -> None:
         return
 
     reading: TelemetryReading = result.reading  # type: ignore[assignment]
+    telemetry_source_tracker.record(
+        reading.source,
+        signed_hardware=auth.authenticated,
+    )
 
     # ── Step 4: Soft sensor-health check ────────────
     if getattr(reading, "_zero_accel_warning", False):

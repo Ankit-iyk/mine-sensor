@@ -11,11 +11,11 @@ Date: 2026-10-27. This is an internal adversarial review, not external peer revi
 | Temporal ablation is identical in the core gradual-tilt result | Mitigated, residual risk | Test establishes code paths can differ; confirmatory scenario does not show incremental benefit |
 | Dropout scenario does not test outage alarms | Unresolved | Unsupported condition is disclosed; detector methods consume feature rows and do not detect freshness |
 | Simulator distributions are not physically grounded; no sensitivity sweep | Unresolved | Parameter inventory distinguishes assumptions; sensitivity sweep not run |
-| Security uses a shared bearer key, not payload HMAC, and replay protection is volatile | Unresolved | See `THREAT_MODEL.md`; source downgrade is only partial mitigation |
+| Replay protection is in-memory and clears on restart; key enrollment and lifecycle are out of band | Unresolved | Per-node HMAC and timestamp/nonce tests are present, but see `THREAT_MODEL.md` for residual deployment controls |
 | Docker/MQTT/dashboard chain is not proven end to end | Requires external/environment validation | Existing audit records Docker unavailable and broker path not established; dashboard production build alone is not end-to-end evidence |
 | No paper, verified novelty analysis, or independent review existed at baseline | Unresolved | Current package adds this critique, model/data provenance artifacts and a claim validator; no publication-level novelty claim is made |
 | Model provenance and external compatibility are incompletely verified | Mitigated, residual risk | Artifact hashes and runtime versions can be generated; clean environment compatibility is not proven |
-| The recorded 64.5-minute synthetic CSV cannot support long-horizon false-alarm claims | Not fixable with current data | Report exposure and short duration honestly; no rule-of-three low-rate claim |
+| The 38,700-row synthetic CSV spans only 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), which cannot support long-horizon false-alarm claims | Not fixable with current data | Report exposure and short duration honestly; no rule-of-three low-rate claim |
 
 ## ML reviewer conclusion
 

@@ -18,7 +18,7 @@ Before scores are reconstructed from the inspected baseline evidence, not from a
 ## What existed, changed, and was learned
 
 - The checkout already had an AI/backend/dashboard pipeline, model artifact, historical evaluation, synthetic placeholder CSVs, and a dirty user-authored `run_all.py` change.
-- Phase 0 recorded environment, tests, dataset coverage, dashboard build, model and evaluation state. Available sensor CSV coverage is about 64.5 minutes, not two hours.
+- Phase 0 recorded environment, tests, dataset coverage, dashboard build, model and evaluation state. The available sensor CSV has 38,700 rows and spans exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), not two hours.
 - Phase 1 made model/mock status observable, logged missing-model fallback, added score-semantics and temporal-path tests, and verified the documented unit/feature mapping. The telemetry source still does not have signed-message replay protection.
 - Phase 2 froze protocol SHA-256 `2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58`, added controlled simulated scenarios and paired statistics, and completed the disjoint 30-seed confirmatory run.
 - Results do not show a universal winner. Simple baselines outperform the current spatial system on several coded tilt scenarios; the forest performs strongly for selected vibration signatures but poorly for acceleration-only events. The no-temporal ablation is identical on gradual tilt, although the targeted test shows the inference paths can diverge on a designed sequence.
@@ -51,8 +51,8 @@ Backend suites required running outside the sandbox because Windows asyncio sock
 | DONE | Complete confirmatory run and preserve raw, aggregate, paired, metadata, figures, and unsupported case | `confirmatory_v1/`; metadata output hashes verified |
 | PARTIAL | Interpret baseline, forest, temporal and spatial outcomes | `CONFIRMATORY_ANALYSIS.md`; generated nuisance rate has a scenario scope bug; no broad added-value conclusion |
 | PARTIAL | Simulator parameter inventory and sensitivity sweep | `evaluation/SIMULATOR_PARAMETERS.md` inventories assumptions; no parameter sweep was run |
-| PARTIAL | Source authentication and status trust review | Existing static key/source downgrade inspected; missing HMAC, replay defense, enrollment, persistent identity, and rotation tests |
-| PARTIAL | Threat model and secure telemetry | `docs/THREAT_MODEL.md`; design documented, but HMAC, durable replay protection, enrollment, and lifecycle implementation remain absent |
+| PARTIAL | Source authentication and status trust review | Per-node HMAC, timestamp checks, and in-process nonce replay are implemented and covered by tests; durable replay defense, enrollment, and key lifecycle remain absent |
+| PARTIAL | Threat model and secure telemetry | `docs/THREAT_MODEL.md`; HMAC and volatile replay checks are implemented, while durable replay protection, enrollment, lifecycle, and deployment controls remain incomplete |
 | DONE | In-process telemetry-to-risk API integration test | `backend/tests/test_inprocess_telemetry_pipeline.py`; 1 passed, with database persistence stubbed |
 | NOT RUN | Docker/MQTT/dashboard end-to-end test | Docker unavailable; no physical device |
 | PARTIAL | Dashboard verification | Production build passed; browser/API status behavior not inspected |

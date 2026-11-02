@@ -9,17 +9,24 @@ Endpoints:
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 import structlog
-from fastapi import APIRouter, Header, Query, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from fastapi import (
+    APIRouter,
+    Body,
+    HTTPException,
+    Query,
+    status,
+)
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.db.session import DbSession
 from app.db.repositories import readings as readings_repo
 from app.db.repositories.sensor_readings import save_reading_safe
 from app.ingestion.schemas import TelemetryReading
 from app.ingestion.source_tracker import telemetry_source_tracker
-from app.ingestion.device_auth import is_valid_hardware_device_key
+from app.ingestion.device_auth import classify_telemetry_payload
 from app.processing.pipeline import pipeline
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
@@ -73,20 +80,25 @@ class TelemetryIngestResponse(BaseModel):
     summary="Ingest one telemetry reading",
 )
 def ingest_telemetry(
-    reading: TelemetryReading,
-    hardware_device_key: Optional[str] = Header(default=None, alias="X-Hardware-Device-Key"),
+    payload: dict[str, Any] = Body(...),
 ) -> TelemetryIngestResponse:
-    if reading.source == "hardware":
-        if is_valid_hardware_device_key(hardware_device_key):
-            reading = reading.model_copy(update={"source": "hardware"})
-        else:
-            logger.warning(
-                "hardware_telemetry_unauthenticated",
-                node_id=reading.node_id,
-                transport="rest",
-            )
-            reading = reading.model_copy(update={"source": "unknown"})
-    telemetry_source_tracker.record(reading.source)
+    clean_payload, auth = classify_telemetry_payload(payload)
+    if not auth.authenticated and payload.get("source") != "simulator":
+        logger.warning(
+            "hardware_telemetry_unauthenticated",
+            node_id=payload.get("node_id"),
+            transport="rest",
+            reason=auth.reason,
+        )
+    try:
+        reading = TelemetryReading.model_validate(clean_payload)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+    telemetry_source_tracker.record(
+        reading.source,
+        signed_hardware=auth.authenticated,
+    )
     save_reading_safe(reading)
     result = pipeline.process_reading(reading)
     return TelemetryIngestResponse(accepted=True, processed=result is not None)

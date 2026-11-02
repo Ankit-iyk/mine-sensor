@@ -1,28 +1,51 @@
-# Reproduction and artifact verification
+# Reproduce evaluation tables
 
-This procedure targets the repository state audited on 2026-10-27. Use the parent workspace virtual environment at `..\.venv\Scripts\python.exe` from this repository directory.
+All data used here is simulated. The only bundled sensor CSV is
+`docs/evaluation/placeholder_data/sensor_data.csv`: 38,700 data rows spanning
+exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds). It is synthetic
+placeholder data, not a hardware recording.
 
-## Registered simulation outputs
+## Regenerate the checked-in report
 
-The frozen v1 run is already present under `docs/evaluation/confirmatory_v1/` and is reproduced with:
-
-```powershell
-..\.venv\Scripts\python.exe -m ai_engine.evaluation.run_all --seeds 30 --output-dir docs/evaluation/confirmatory_reproduction
-```
-
-That command uses the frozen default test seed bases. Compare protocol and output hashes in the generated `metadata.json`; do not overwrite or replace `confirmatory_v1` when rerunning. The historical v1 nuisance metric caveat remains applicable.
-
-## Local checks
+From the repository root in PowerShell:
 
 ```powershell
-..\.venv\Scripts\python.exe -m pytest ai_engine/tests -q --basetemp=.test-tmp/ai
-..\.venv\Scripts\python.exe -m ai_engine.evaluation.run_all --seeds 1 --test-seed-base 990000 --shift-seed-base 991000 --output-dir docs/evaluation/final_smoke
-..\.venv\Scripts\python.exe tools/validate_claims.py
-..\.venv\Scripts\python.exe tools/artifact_manifest.py
+.\scripts\reproduce.ps1
 ```
 
-For the backend suite, run from `backend/` with the same parent interpreter: `..\..\.venv\Scripts\python.exe -m pytest tests -q --basetemp=..\.test-tmp\backend`. On this Windows machine, the backend suite stalled inside the sandbox during asyncio/socket setup, so the recorded full run was outside the sandbox. If Python's system temp root is protected, point `TEMP` and `TMP` to `.test-tmp` before the evaluation command. The dashboard production build passed in the baseline audit; Docker/MQTT/database/browser end-to-end testing was not established. The compiler status for `paper/` is reported in `docs/FINAL_AUDIT.md`.
+By default this rebuilds the Markdown tables and figures from the existing
+`docs/evaluation/results.csv`; it does not generate new evaluation data.
+Review the report and CSV together before publishing any changed metric
+interpretation.
 
-## Artifact scope
+## Run a reduced exploratory evaluation
 
-`tools/artifact_manifest.py` hashes the model, frozen protocol, and key confirmatory CSV/metadata files. It does not hash the whole repository or guarantee a clean environment. The model is a joblib artifact and should only be loaded from a trusted source. Do not use this simulation model for field safety decisions.
+```powershell
+.\scripts\reproduce.ps1 -RunEvaluation
+```
+
+This writes a separate one-seed exploratory run under
+`docs/evaluation/reproduction_run/` and does not replace the checked-in
+results. The larger evaluation has exceeded the 15-minute budget, so this
+script uses fewer seeds for the new run. One-seed intervals are degenerate,
+not uncertainty estimates, and must not be presented as confirmatory results.
+The output report identifies its seed count and seed ranges.
+
+## Test suites
+
+The GitHub Actions workflow runs both suites. Locally, from the repository
+root, run:
+
+```powershell
+..\.venv\Scripts\python.exe -m pytest ai_engine\tests -q
+Push-Location backend
+..\..\.venv\Scripts\python.exe -m pytest tests -q
+Pop-Location
+```
+
+## End-to-end scope
+
+`scripts/run_e2e_inprocess.py` exercises REST telemetry and `/api/system/status`
+inside the process and records its actual response data in
+`docs/evaluation/e2e_run.md`. Database persistence and detector processing are
+stubbed for that check. The Docker/MQTT chain was NOT RUN.

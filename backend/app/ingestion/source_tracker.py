@@ -17,8 +17,16 @@ class TelemetrySourceTracker:
             "simulator": None,
         }
 
-    def record(self, source: str, seen_at: datetime | None = None) -> None:
+    def record(
+        self,
+        source: str,
+        seen_at: datetime | None = None,
+        *,
+        signed_hardware: bool = False,
+    ) -> None:
         if source not in self._last_seen:
+            return
+        if source == "hardware" and not signed_hardware:
             return
 
         timestamp = seen_at or datetime.now(timezone.utc)
