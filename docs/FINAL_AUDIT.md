@@ -1,6 +1,8 @@
-# SUBSENSE final audit and phase checklist
+# SUBSENSE final audit
 
-Audit date: 2026-10-27. Repository: `ai-ml-development` at starting commit `784a895a6c176b6922d95476a2199a6ae7205622`. No commit was created. The original uncommitted user change in `ai_engine/evaluation/run_all.py` was inspected and preserved.
+Updated: 2026-11-09. Branch: `ai-ml-development`. This section reports the
+current state; the explicitly labeled historical audit below is retained as
+an older record and is not the current verification status.
 
 ## Supplemental read-only checks (2026-11-09)
 
@@ -22,15 +24,14 @@ states:
 >
 > The `false_alarms_normal_per_hour` field is separately named and uses the normal exposure path; consult raw seed rows and metric implementation before drawing conclusions about deployment rates. The current experiment also does not establish an operational false-alarm budget: parameters were not calibrated to a common budget, and generated exposure is short relative to field monitoring.
 
-The following existing statements or generated summaries depend on, or expose,
-the affected endpoint and must not be used as evidence of nuisance-alarm
-rejection:
+The affected prose and generated summaries were identified as follows:
 
-- `README.md`: “On tilt-only drift a simple z-score is competitive or better; the forest's measured benefit is nuisance-alarm rejection.”
-- `docs/evaluation/BASELINE_AUDIT.md`: the historical gradual-tilt sentence that compares z-score and current-system nuisance alarms per hour. This is from the separate historical CSV, not the confirmatory CSV, and cannot substantiate the claimed benefit.
-- `docs/evaluation/results.md`, `docs/evaluation/baseline_artifacts/results.md`, `docs/evaluation/phase1_artifacts/results.md`, `docs/evaluation/phase2_smoke/results.md`, and `docs/evaluation/final_smoke/results.md`: their generated nuisance-rate columns, winner comparisons, and prose rankings are not valid scenario-specific nuisance evidence. They are historical/smoke products and are not the source for the table below.
-- `docs/REVIEWER_CRITIQUE.md` and `docs/evaluation/CONFIRMATORY_ANALYSIS.md` already describe the limitation; these are warnings, not evidence for a rejection benefit.
-- The prior `paper/main.tex` did not report a nuisance-rejection benefit, but its results framing must remain explicit that this endpoint cannot support such a claim.
+- `README.md` previously stated, “On tilt-only drift a simple z-score is competitive or better; the forest's measured benefit is nuisance-alarm rejection.” It has been replaced with a simulation-scoped statement about tilt-only comparisons and the non-tilt alert gate.
+- `docs/evaluation/BASELINE_AUDIT.md` previously compared historical z-score and current-system nuisance alarms per hour. That sentence has been removed; the historical nuisance column does not support a per-scenario comparison.
+- `docs/evaluation/results.md`, `docs/evaluation/final_smoke/results.md`, `docs/evaluation/baseline_artifacts/results.md`, `docs/evaluation/phase1_artifacts/results.md`, and `docs/evaluation/phase2_smoke/results.md` contained generated nuisance winners and sentences such as “the z-score is lower on this metric” and “Removing persistence raised mean F1 but also raised nuisance false alarms.” The reports now carry an explicit scope warning, and the report generator no longer emits those scenario-level comparisons.
+- `docs/evaluation/confirmatory_v1/results.md` contains the same generated rankings. It was left unchanged under the no-edit constraint; its companion `docs/evaluation/CONFIRMATORY_ANALYSIS.md` explicitly says not to interpret those per-scenario nuisance values or paired tests.
+- `docs/REVIEWER_CRITIQUE.md` and `docs/evaluation/CONFIRMATORY_ANALYSIS.md` describe the limitation as a caveat, not evidence for a rejection benefit.
+- The prior `paper/main.tex` did not claim a nuisance benefit; the revised paper explicitly states that no nuisance-alarm rejection conclusion is drawn.
 
 ### Why the integrated method misses non-tilt events
 
@@ -41,12 +42,14 @@ The integrated `current_system` path instead calls
 Isolation Forest positive is retained only if `tilt_deviation >= 0.11` or
 `baseline_deviation >= 0.11` (`:205-206`). Thus vibration-only and
 acceleration-only forest positives with neither tilt metric crossing the
-threshold are suppressed before event scoring. This matches the backend
+threshold are suppressed before event scoring. The large recall gaps in the
+table occur under the `simulator` noise model; they are not a universal result
+across noise models. This matches the backend
 adapter: `ai_engine/adapter.py:57-60` assigns `MICRO_ANOMALY` to a forest
 positive when both deviations are below `0.11`; the evaluation path counts
 only the thresholded alert. In `backend/app/processing/pipeline.py:150-158`,
-the resulting state and score are passed to spatial assessment, then into
-risk evaluation at `:164-173`; the pipeline does not restore a discarded raw
+the resulting state and score are passed to spatial assessment, followed by
+risk evaluation at `:163-178`; the pipeline does not restore a discarded raw
 forest positive. These are inspection findings, not a new evaluation trace.
 
 ### Existing confirmatory metrics
@@ -112,7 +115,31 @@ confirmatory `paired_tests.csv` contains Holm-adjusted values of
 `0.004999500049995001`; in prose, report these boundary values as
 `p <= 0.005`, not as an exact `p = 0.004999`.
 
-## Evidence-based scorecard
+## Current task status and scorecard
+
+| # | Status | Evidence |
+|---|---|---|
+| 1. Read-only checks | DONE | Existing CSV transcribed and verified row-for-row; source trace and metric limitation recorded above. No evaluation run was performed. |
+| 2. Honest docs and paper | DONE | README and paper are simulation-scoped; nuisance-rate benefit claims were removed or qualified; Related Work remains an explicit author placeholder. |
+| 3. Hygiene | DONE | Owner-provided contribution roles and AI-assistance disclosure are recorded; CI workflow and README status columns were verified; paper validator passed. |
+| 4. Telemetry authentication | DONE | Delimited per-node HMAC, timestamp window, bounded nonce cache, constant-time comparison, and requested negative/simulator tests are implemented. |
+| 5. Final audit | DONE | This audit and `PROJECT_STATUS.md` reflect current verified state; both suites and the paper claim validator were rerun for the final update. |
+| New evaluation run | SKIPPED | Explicitly prohibited. Frozen result and protocol files were not edited; no new result file was created. |
+| Docker/MQTT chain | NOT RUN | Only in-process tests were run; Docker, broker, database, dashboard integration, and physical hardware were not tested. |
+| Latest remote Actions status | NOT RUN | The workflow file was verified to invoke both suites; a remote run for the latest commit was not checked. |
+| Paper typesetting | NOT RUN | Source claim validation was run; a LaTeX build was not run for this update. |
+
+| Domain | Score | Evidence and remaining limit |
+|---|---:|---|
+| Implementation | 6/10 | Both Python suites pass; per-node authentication and local API behavior have tests. Docker/MQTT deployment and physical hardware remain unverified. |
+| Rigor | 5/10 | The frozen simulation includes paired seed-level analysis and recorded resampling. The nuisance endpoint is invalid for per-scenario inference, and the integrated system suppresses some coded non-tilt events. |
+| Preprint readiness | 2/10 | The benchmark draft and 8-claim ledger exist and validate. Related Work is an author placeholder, author details need confirmation, and no paper build or external review was completed. |
+| Impact | 1/10 | No physical recording, mine deployment, operational safety evidence, independent adoption, or external validation exists. |
+
+Scores rate evidence rather than effort or feature count. They do not imply
+hardware validation, operational suitability, or publication readiness.
+
+## Historical audit (2026-10-27; superseded)
 
 Scoring rubric used for both baseline and current state: 0–2 means largely absent or unverified; 3–4 means partial implementation with limited checks; 5–6 means core behavior and local evidence exist but material integration or validation gaps remain; 7–8 means independently reproducible, robustly integrated evidence; 9–10 requires strong independent validation and, where relevant, real deployment evidence. Scores measure evidence, not effort or feature count.
 
@@ -125,7 +152,7 @@ Scoring rubric used for both baseline and current state: 0–2 means largely abs
 
 Before scores are reconstructed from the inspected baseline evidence, not from a prior formal scorecard. The unchanged explicit rubric is applied to the new evidence. The current result does not justify a 9/10 in any domain.
 
-## What existed, changed, and was learned
+## Historical baseline findings (2026-10-27)
 
 - The checkout already had an AI/backend/dashboard pipeline, model artifact, historical evaluation, synthetic placeholder CSVs, and a dirty user-authored `run_all.py` change.
 - Phase 0 recorded environment, tests, dataset coverage, dashboard build, model and evaluation state. The available sensor CSV has 38,700 rows and spans exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), not two hours.
@@ -135,7 +162,7 @@ Before scores are reconstructed from the inspected baseline evidence, not from a
 - The generated nuisance false-alarm metric repeats the shared baseline-drift control episode across scenario rows. Preserve that result but do not cite it as a per-scenario nuisance rate. See [`evaluation/CONFIRMATORY_ANALYSIS.md`](evaluation/CONFIRMATORY_ANALYSIS.md).
 - Nothing here establishes forecasting performance, real-mine performance, hardware accuracy, safety benefit, or prevention of incidents.
 
-## Verification record
+## Historical verification record (through 2026-10-27)
 
 | Verification | Command/result | Evidence |
 |---|---|---|
@@ -149,7 +176,7 @@ Before scores are reconstructed from the inspected baseline evidence, not from a
 
 Backend suites required running outside the sandbox because Windows asyncio socketpair setup stalled within the sandbox. Docker was unavailable, MQTT broker connectivity was not established, and browser status behavior was not checked. The 30-seed run is simulation, not an integration test.
 
-## Master checklist
+## Historical master checklist (as of 2026-10-27)
 
 | Status | Major task | Evidence / remaining work |
 |---|---|---|
@@ -174,11 +201,11 @@ Backend suites required running outside the sandbox because Windows asyncio sock
 | PARTIAL | Final reproduction and release audit | Updated test suites, smoke evaluation, claim validation and manifest ran; no clean checkout or 30-seed rerun of the final tree; no commit, push, publication, or release |
 | REQUIRES EXTERNAL VALIDATION | Physical sensor calibration, mine performance, field safety and external adoption | Cannot be established from current simulator or software tests |
 
-## Final repository state and authorization boundaries
+## Historical repository state (2026-10-27)
 
 The worktree intentionally contains source changes, generated evaluation artifacts, reports, and the original user modification. No staging, commit, push, publication, or release was performed. Docker, broker, physical hardware, independent review, and external adoption remain unverified. The project is not release-ready as a field safety system. Completing a preprint package, selecting a publication venue, licensing contributions, and publishing would require verified authorship/rights and owner decisions.
 
-## Continuation record (2026-10-27)
+## Earlier continuation record (2026-10-27; superseded by current status above)
 
 This continuation preserves the original audit above and adds the following artifacts after that audit was written:
 
