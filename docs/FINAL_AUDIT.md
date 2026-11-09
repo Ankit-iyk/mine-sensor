@@ -2,6 +2,116 @@
 
 Audit date: 2026-10-27. Repository: `ai-ml-development` at starting commit `784a895a6c176b6922d95476a2199a6ae7205622`. No commit was created. The original uncommitted user change in `ai_engine/evaluation/run_all.py` was inspected and preserved.
 
+## Supplemental read-only checks (2026-11-09)
+
+No evaluation was run and no result file was generated. The checks below use
+the existing `docs/evaluation/confirmatory_v1/` artifacts and source code.
+
+### Nuisance-rate metric limitation (scope bug)
+
+The relevant section in
+[`evaluation/CONFIRMATORY_ANALYSIS.md`](evaluation/CONFIRMATORY_ANALYSIS.md)
+states:
+
+> `false_alarms_nuisance_per_hour_mean` is identical across all scenario/method rows for a given method/noise family. Inspection of the metric path shows the value is measured on the shared baseline-drift control episode and then carried into each scenario summary. It is not a per-scenario impulse-nuisance or phone-vibration nuisance exposure rate. Consequently:
+>
+> - Do not interpret those repeated values as nuisance false-alarm rates for the scenario named in a row.
+> - Do not use the per-scenario nuisance false-alarm paired tests in `paired_tests.csv` as scenario-specific evidence.
+> - The machine outputs remain preserved as run products; this issue is not repaired by editing the generated files after results were seen.
+> - A corrected nuisance-exposure endpoint requires a separately versioned, post-hoc supplemental analysis or a new protocol and untouched seed families. It must be labelled accordingly.
+>
+> The `false_alarms_normal_per_hour` field is separately named and uses the normal exposure path; consult raw seed rows and metric implementation before drawing conclusions about deployment rates. The current experiment also does not establish an operational false-alarm budget: parameters were not calibrated to a common budget, and generated exposure is short relative to field monitoring.
+
+The following existing statements or generated summaries depend on, or expose,
+the affected endpoint and must not be used as evidence of nuisance-alarm
+rejection:
+
+- `README.md`: “On tilt-only drift a simple z-score is competitive or better; the forest's measured benefit is nuisance-alarm rejection.”
+- `docs/evaluation/BASELINE_AUDIT.md`: the historical gradual-tilt sentence that compares z-score and current-system nuisance alarms per hour. This is from the separate historical CSV, not the confirmatory CSV, and cannot substantiate the claimed benefit.
+- `docs/evaluation/results.md`, `docs/evaluation/baseline_artifacts/results.md`, `docs/evaluation/phase1_artifacts/results.md`, `docs/evaluation/phase2_smoke/results.md`, and `docs/evaluation/final_smoke/results.md`: their generated nuisance-rate columns, winner comparisons, and prose rankings are not valid scenario-specific nuisance evidence. They are historical/smoke products and are not the source for the table below.
+- `docs/REVIEWER_CRITIQUE.md` and `docs/evaluation/CONFIRMATORY_ANALYSIS.md` already describe the limitation; these are warnings, not evidence for a rejection benefit.
+- The prior `paper/main.tex` did not report a nuisance-rejection benefit, but its results framing must remain explicit that this endpoint cannot support such a claim.
+
+### Why the integrated method misses non-tilt events
+
+The confirmatory evaluation's `isolation_forest` method returns its raw
+Isolation Forest prediction from `ai_engine/evaluation/methods.py:137-140`.
+The integrated `current_system` path instead calls
+`_current_predictions` (`ai_engine/evaluation/methods.py:199-207`), where an
+Isolation Forest positive is retained only if `tilt_deviation >= 0.11` or
+`baseline_deviation >= 0.11` (`:205-206`). Thus vibration-only and
+acceleration-only forest positives with neither tilt metric crossing the
+threshold are suppressed before event scoring. This matches the backend
+adapter: `ai_engine/adapter.py:57-60` assigns `MICRO_ANOMALY` to a forest
+positive when both deviations are below `0.11`; the evaluation path counts
+only the thresholded alert. In `backend/app/processing/pipeline.py:150-158`,
+the resulting state and score are passed to spatial assessment, then into
+risk evaluation at `:164-173`; the pipeline does not restore a discarded raw
+forest positive. These are inspection findings, not a new evaluation trace.
+
+### Existing confirmatory metrics
+
+The table transcribes `event_recall_mean`, `f1_mean`, and
+`detection_delay_seconds_mean` from the existing
+`docs/evaluation/confirmatory_v1/results.csv`. Empty delay cells are empty in
+the CSV (no detected event delay was defined); `NA` is shown here for
+readability. No values are newly calculated.
+
+| Noise model | Scenario | Method | Event recall | F1 | Detection delay (seconds) |
+|---|---|---|---:|---:|---:|
+| simulator | vibration_bursts | baseline_z_score | 0.0 | 0.0 | NA |
+| simulator | vibration_bursts | ewma | 0.0 | 0.0 | NA |
+| simulator | vibration_bursts | cusum | 0.0 | 0.0 | NA |
+| simulator | vibration_bursts | one_class_svm | 1.0 | 0.4988376888637074 | 0.0 |
+| simulator | vibration_bursts | local_outlier_factor | 1.0 | 0.48504231689465327 | 0.0 |
+| simulator | vibration_bursts | isolation_forest | 1.0 | 0.9368907958019719 | 0.0 |
+| simulator | vibration_bursts | current_system | 0.26666666666666666 | 0.02354978354978355 | 22.75 |
+| simulator | acceleration_only | baseline_z_score | 0.0 | 0.0 | NA |
+| simulator | acceleration_only | ewma | 0.0 | 0.0 | NA |
+| simulator | acceleration_only | cusum | 0.0 | 0.0 | NA |
+| simulator | acceleration_only | one_class_svm | 0.3333333333333333 | 0.019236956167614137 | 12.6 |
+| simulator | acceleration_only | local_outlier_factor | 0.16666666666666666 | 0.00937073610047754 | 12.2 |
+| simulator | acceleration_only | isolation_forest | 0.3 | 0.01889425310477942 | 13.444444444444445 |
+| simulator | acceleration_only | current_system | 0.0 | 0.0 | NA |
+| simulator | combined_vibration_acceleration | baseline_z_score | 0.0 | 0.0 | NA |
+| simulator | combined_vibration_acceleration | ewma | 0.0 | 0.0 | NA |
+| simulator | combined_vibration_acceleration | cusum | 0.0 | 0.0 | NA |
+| simulator | combined_vibration_acceleration | one_class_svm | 1.0 | 0.48200732467083657 | 0.0 |
+| simulator | combined_vibration_acceleration | local_outlier_factor | 1.0 | 0.46533873114538626 | 0.0 |
+| simulator | combined_vibration_acceleration | isolation_forest | 1.0 | 0.9311357091447185 | 0.0 |
+| simulator | combined_vibration_acceleration | current_system | 0.13333333333333333 | 0.010618279569892473 | 20.5 |
+| distribution_shift | vibration_bursts | baseline_z_score | 0.5 | 0.03280115081590489 | 28.952731333333336 |
+| distribution_shift | vibration_bursts | ewma | 0.0 | 0.0 | NA |
+| distribution_shift | vibration_bursts | cusum | 1.0 | 0.19512619707302367 | 3.9628067999999996 |
+| distribution_shift | vibration_bursts | one_class_svm | 1.0 | 0.4167786200531786 | 0.0 |
+| distribution_shift | vibration_bursts | local_outlier_factor | 1.0 | 0.42528403779079305 | 0.0 |
+| distribution_shift | vibration_bursts | isolation_forest | 1.0 | 0.6616312774385431 | 0.0 |
+| distribution_shift | vibration_bursts | current_system | 1.0 | 0.4619399102745184 | 0.8785992666666665 |
+| distribution_shift | acceleration_only | baseline_z_score | 0.5333333333333333 | 0.04234129631547135 | 12.540915125 |
+| distribution_shift | acceleration_only | ewma | 0.0 | 0.0 | NA |
+| distribution_shift | acceleration_only | cusum | 0.9666666666666667 | 0.17400474302787053 | 2.147234206896552 |
+| distribution_shift | acceleration_only | one_class_svm | 0.7333333333333333 | 0.047072460486413795 | 10.233232681818182 |
+| distribution_shift | acceleration_only | local_outlier_factor | 0.6666666666666666 | 0.03452385277807503 | 10.053328599999999 |
+| distribution_shift | acceleration_only | isolation_forest | 0.8 | 0.05031215731105078 | 9.760921791666668 |
+| distribution_shift | acceleration_only | current_system | 0.7666666666666667 | 0.055093765107018106 | 11.716076130434784 |
+| distribution_shift | combined_vibration_acceleration | baseline_z_score | 0.5333333333333333 | 0.04824479783595651 | 12.540915125 |
+| distribution_shift | combined_vibration_acceleration | ewma | 0.0 | 0.0 | NA |
+| distribution_shift | combined_vibration_acceleration | cusum | 0.9666666666666667 | 0.17443892303978872 | 2.106326517241379 |
+| distribution_shift | combined_vibration_acceleration | one_class_svm | 1.0 | 0.3983156220282036 | 0.0 |
+| distribution_shift | combined_vibration_acceleration | local_outlier_factor | 1.0 | 0.409359402218086 | 0.0 |
+| distribution_shift | combined_vibration_acceleration | isolation_forest | 1.0 | 0.6459443738220259 | 0.0 |
+| distribution_shift | combined_vibration_acceleration | current_system | 1.0 | 0.44250702201146136 | 0.8816632333333332 |
+
+### Resampling and p-value precision
+
+`ai_engine/evaluation/statistics.py` uses 10,000 paired-bootstrap replicates
+for confidence intervals and 10,000 random sign-flip replicates for each
+paired p-value, with the add-one correction `(exceedances + 1) / 10001`.
+Holm adjustment is then applied across the registered comparisons. The
+confirmatory `paired_tests.csv` contains Holm-adjusted values of
+`0.004999500049995001`; in prose, report these boundary values as
+`p <= 0.005`, not as an exact `p = 0.004999`.
+
 ## Evidence-based scorecard
 
 Scoring rubric used for both baseline and current state: 0–2 means largely absent or unverified; 3–4 means partial implementation with limited checks; 5–6 means core behavior and local evidence exist but material integration or validation gaps remain; 7–8 means independently reproducible, robustly integrated evidence; 9–10 requires strong independent validation and, where relevant, real deployment evidence. Scores measure evidence, not effort or feature count.
