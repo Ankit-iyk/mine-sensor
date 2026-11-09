@@ -12,7 +12,7 @@ certified mine-safety system.
 | Verified | Simulated only | Untested |
 |---|---|---|
 | AI-engine and backend automated test suites passed for the current change set | Detector evaluation and placeholder CSV data; the placeholder CSV contains 38,700 rows spanning 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds) | Docker/MQTT/database/dashboard chain |
-| In-process FastAPI behaviors covered by tests | Every reported detector result in `docs/evaluation/results.csv` | Datasheet-grounded simulator, literature review, deployment pilot |
+| In-process FastAPI behaviors covered by tests | Confirmatory detector outcomes in `docs/evaluation/confirmatory_v1/results.csv` (simulation only; nuisance-rate limitation documented) | Datasheet-grounded simulator, literature review, deployment pilot |
 
 ## Architecture
 
