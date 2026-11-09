@@ -103,14 +103,16 @@ Configure a unique random secret for each enrolled node in
 `{"N01":"<unique-random-secret-at-least-32-bytes>"}`. Hardware REST and MQTT
 payloads must include a timezone-aware `timestamp`, a unique `nonce` (16–128
 allowed characters), and a lowercase HMAC-SHA256 `signature`. The signature is
-computed over the canonical JSON payload (sorted keys, compact separators,
-UTF-8; omit only the `signature` field), so the timestamp and nonce are signed
-along with the telemetry fields. The backend accepts timestamps within 60
-seconds of its clock and rejects nonce replay while its process is running.
-Only a valid signature can mark a hardware reading LIVE; the source field on
-its own is not proof. The simulator forces `source="simulator"` and strips
-signature and nonce fields. Use TLS for REST/MQTT and restrict broker access;
-HMAC does not replace transport protection or prove physical device identity.
+computed as HMAC-SHA256 over the UTF-8 bytes
+`node_id|timestamp|nonce|canonical_payload`. `canonical_payload` is sorted,
+compact UTF-8 JSON containing the remaining message fields, excluding
+`node_id`, `timestamp`, `nonce`, and `signature`. The backend accepts
+timestamps within 60 seconds of its clock and rejects nonce replay while its
+process is running. Only a valid signature can mark a hardware reading LIVE;
+the source field on its own is not proof. The simulator forces
+`source="simulator"` and strips signature and nonce fields. Use TLS for
+REST/MQTT and restrict broker access; HMAC does not replace transport
+protection or prove physical device identity.
 
 ### Docker, backend, simulator, and dashboard
 

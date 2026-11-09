@@ -7,6 +7,7 @@ import pytest
 from app.ingestion import message_handler
 from app.ingestion.device_auth import (
     authenticate_telemetry,
+    canonical_message,
     classify_telemetry_payload,
     clear_replay_cache,
     sign_telemetry_payload,
@@ -70,6 +71,55 @@ def test_wrong_key_signature_is_rejected(configured_node):
     assert not decision.authenticated
     assert decision.reason == "invalid_signature"
     assert classified["source"] == "unknown"
+
+
+def test_signature_uses_node_timestamp_nonce_and_canonical_payload(configured_node):
+    payload = _payload()
+    signed_fields = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"node_id", "timestamp", "nonce"}
+    }
+    canonical_json = json.dumps(
+        signed_fields,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+    assert canonical_message(payload) == (
+        f"{payload['node_id']}|{payload['timestamp']}|{payload['nonce']}|{canonical_json}"
+    ).encode("utf-8")
+
+
+def test_tampered_payload_is_rejected(configured_node):
+    payload = _signed_payload()
+    payload["tilt_x"] = 99.0
+
+    decision = authenticate_telemetry(payload)
+
+    assert not decision.authenticated
+    assert decision.reason == "invalid_signature"
+
+
+@pytest.mark.parametrize(
+    ("field", "reason"),
+    (
+        ("node_id", "missing_or_malformed_node_id"),
+        ("timestamp", "missing_or_malformed_timestamp"),
+        ("nonce", "missing_or_malformed_nonce"),
+        ("signature", "missing_or_malformed_signature"),
+    ),
+)
+def test_missing_signed_fields_are_rejected(configured_node, field, reason):
+    payload = _signed_payload()
+    payload.pop(field)
+
+    decision = authenticate_telemetry(payload)
+
+    assert not decision.authenticated
+    assert decision.reason == reason
 
 
 def test_expired_signed_timestamp_is_rejected(configured_node):

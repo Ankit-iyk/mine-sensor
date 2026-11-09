@@ -29,15 +29,40 @@ class AuthDecision:
 
 
 def canonical_payload(payload: Mapping[str, Any]) -> bytes:
-    """Serialize all signed fields deterministically; the signature itself is excluded."""
-    unsigned = {key: value for key, value in payload.items() if key != "signature"}
+    """Serialize telemetry fields outside the separately signed auth envelope."""
+    telemetry = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"node_id", "timestamp", "nonce", "signature"}
+    }
     return json.dumps(
-        unsigned,
+        telemetry,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
+
+
+def canonical_message(payload: Mapping[str, Any]) -> bytes:
+    """Build the signed node_id|timestamp|nonce|canonical-JSON message."""
+    node_id = payload.get("node_id")
+    timestamp = payload.get("timestamp")
+    nonce = payload.get("nonce")
+    if not isinstance(node_id, str) or not node_id or "|" in node_id:
+        raise ValueError("node_id must be a non-empty string without the separator")
+    if not isinstance(timestamp, str) or not timestamp:
+        raise ValueError("timestamp must be a non-empty string")
+    if not isinstance(nonce, str) or not nonce:
+        raise ValueError("node_id, timestamp, and nonce are required strings")
+    return b"|".join(
+        (
+            node_id.encode("utf-8"),
+            timestamp.encode("utf-8"),
+            nonce.encode("utf-8"),
+            canonical_payload(payload),
+        )
+    )
 
 
 def sign_telemetry_payload(payload: Mapping[str, Any], device_key: str) -> str:
@@ -46,7 +71,7 @@ def sign_telemetry_payload(payload: Mapping[str, Any], device_key: str) -> str:
         raise ValueError("device key must be a non-empty string")
     return hmac.new(
         device_key.encode("utf-8"),
-        canonical_payload(payload),
+        canonical_message(payload),
         hashlib.sha256,
     ).hexdigest()
 
@@ -58,22 +83,11 @@ def authenticate_telemetry(
 ) -> AuthDecision:
     """Verify node key, HMAC, timestamp freshness, and one-time nonce atomically."""
     node_id = payload.get("node_id")
-    device_key = settings.hardware_device_keys.get(node_id) if isinstance(node_id, str) else None
-    if not isinstance(device_key, str) or not device_key:
-        return AuthDecision(False, "unknown_device")
-    if len(device_key.encode("utf-8")) < 32:
-        return AuthDecision(False, "device_key_too_short")
-
-    signature = payload.get("signature")
-    if not isinstance(signature, str) or len(signature) != 64:
-        return AuthDecision(False, "missing_or_malformed_signature")
-
-    nonce = payload.get("nonce")
-    if not isinstance(nonce, str) or not _NONCE_PATTERN.fullmatch(nonce):
-        return AuthDecision(False, "missing_or_malformed_nonce")
+    if not isinstance(node_id, str) or not node_id or "|" in node_id:
+        return AuthDecision(False, "missing_or_malformed_node_id")
 
     timestamp_text = payload.get("timestamp")
-    if not isinstance(timestamp_text, str):
+    if not isinstance(timestamp_text, str) or not timestamp_text:
         return AuthDecision(False, "missing_or_malformed_timestamp")
     try:
         timestamp = datetime.fromisoformat(timestamp_text.replace("Z", "+00:00"))
@@ -81,6 +95,20 @@ def authenticate_telemetry(
         return AuthDecision(False, "missing_or_malformed_timestamp")
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
         return AuthDecision(False, "timestamp_must_include_timezone")
+
+    nonce = payload.get("nonce")
+    if not isinstance(nonce, str) or not _NONCE_PATTERN.fullmatch(nonce):
+        return AuthDecision(False, "missing_or_malformed_nonce")
+
+    signature = payload.get("signature")
+    if not isinstance(signature, str) or len(signature) != 64:
+        return AuthDecision(False, "missing_or_malformed_signature")
+
+    device_key = settings.hardware_device_keys.get(node_id)
+    if not isinstance(device_key, str) or not device_key:
+        return AuthDecision(False, "unknown_device")
+    if len(device_key.encode("utf-8")) < 32:
+        return AuthDecision(False, "device_key_too_short")
 
     current_time = now or datetime.now(timezone.utc)
     if current_time.tzinfo is None or current_time.utcoffset() is None:

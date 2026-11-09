@@ -1,67 +1,70 @@
 # SUBSENSE telemetry threat model
 
-Status date: 2026-11-02. This describes the inspected prototype, not a security certification.
+Status date: 2026-11-09. This describes the checked-in application code and
+tests; it is not a security certification or deployment assessment.
 
-## Assets and trust boundaries
+## Trust boundary and signed format
 
-Assets include telemetry integrity, device/source status, model and risk
-outputs, broker credentials, per-node secrets, and database availability.
-Untrusted input crosses the MQTT broker and REST ingestion route. Device keys
-are configured per `node_id`; enrollment, rotation, and revocation are
-currently out-of-band.
+REST and MQTT telemetry are untrusted until authenticated by
+`backend/app/ingestion/device_auth.py`. The backend looks up a per-node secret
+in `HARDWARE_DEVICE_KEYS` by `node_id`; each configured key must contain at
+least 32 UTF-8 bytes.
 
-## Signed LIVE messages
+The HMAC-SHA256 input is the UTF-8 encoding of
+`node_id|timestamp|nonce|canonical_payload`. The first three fields are
+separately included in that order. `canonical_payload` is sorted, compact
+UTF-8 JSON containing all remaining message fields except `node_id`,
+`timestamp`, `nonce`, and `signature`. Thus the source label and telemetry
+values are authenticated as part of the payload. The signature is a lowercase
+hex digest, compared with `hmac.compare_digest`.
 
-REST and MQTT ingestion use `backend/app/ingestion/device_auth.py`. The
-backend selects a unique key from `HARDWARE_DEVICE_KEYS` by `node_id` and
-verifies a lowercase HMAC-SHA256 hex signature. The signed message is
-canonical UTF-8 JSON with sorted keys, compact separators, and all input
-fields except `signature`; `timestamp` and `nonce` are therefore included in
-the MAC. The backend requires a timezone-aware timestamp within 60 seconds of
-its clock, a 16–128 character nonce, and a configured secret of at least 32
-UTF-8 bytes. `hmac.compare_digest` checks the MAC.
+The timestamp must be timezone-aware and within 60 seconds of the backend
+clock. A nonce must match the 16–128 character allowlist. Successfully
+authenticated non-simulator traffic is classified internally as hardware;
+unsigned or invalid hardware claims become `unknown`. A simulator source is
+always classified as `simulator`, including when the payload has a valid
+signature. The checked-in simulator forces that source label and removes
+signature and nonce fields before publishing.
 
-Nonce uniqueness is enforced per node using a locked in-process cache. It
-retains entries for 120 seconds and fails closed if the cache reaches its
-100,000-entry cap. Restarting the process clears that cache, so this is not
-durable replay protection. LIVE status is updated only by the REST/MQTT
-ingestion paths after successful signature verification. Unauthenticated
-`source="hardware"` is classified as `unknown`. A `source="simulator"` payload
-is kept SIMULATED even if it carries a valid signature; the simulator strips
-signature and nonce fields before publish.
+## Covered by the implementation
 
-## Threat coverage
-
-| Threat | Current mitigation | Residual status |
+| Threat / property | Implemented behavior | Boundary of the claim |
 |---|---|---|
-| Forged `source="hardware"` without a key | Source is downgraded to `unknown`; source text alone never marks LIVE | MITIGATED for the inspected REST and MQTT ingestion paths |
-| Wrong, absent, or modified HMAC | Unknown node, missing signature, or invalid HMAC is rejected as hardware proof | MITIGATED for message integrity when keys remain secret |
-| Replay and stale timestamps | Per-node nonce cache and a 60-second timestamp window | PARTIAL: in-memory cache clears on restart; synchronized clocks are required |
-| Payload tampering | MAC covers the canonical payload, including timestamp and nonce | MITIGATED for in-transit edits without the node key; compromised keys remain a risk |
-| Simulator traffic claiming LIVE | Simulator publisher forces the simulator source and removes auth fields; simulator source is never classified as hardware | MITIGATED in the checked-in simulator path |
-| Unknown device enrollment | Keys are mapped by configured node ID | PARTIAL: no enrollment service or identity proof |
-| Key disclosure, rotation, and revocation | Per-node secrets are read from configuration | UNRESOLVED lifecycle and protected provisioning |
-| Denial of service | Nonce cache is bounded and fails closed | UNRESOLVED endpoint/broker rate limits, resource quotas, and availability controls |
-| Process restart or clock manipulation | Timestamp freshness limits exposure; tracker and replay cache are in memory | UNRESOLVED durable replay state, clock trust, and persistent status |
-| Physical spoofing or bad sensor measurements | HMAC authenticates possession of a configured key only | OUT OF SCOPE: it cannot prove the sender is an ESP32 or validate physical measurements |
+| Forged hardware source label | A source string alone cannot produce LIVE status. Hardware status is recorded only after successful HMAC verification. | Applies to the inspected REST and MQTT ingestion paths. |
+| Wrong device key or modified signed fields | The per-node key verifies the MAC over the node ID, timestamp, nonce, and canonical payload. | Protects message integrity/authenticity only while the configured secret is secret; it does not prove a physical device identity. |
+| Stale message | Timezone-aware timestamps outside the 60-second skew window are rejected. | Depends on a trustworthy, synchronized backend clock. |
+| Replayed nonce in one process | A locked cache tracks `(node_id, nonce)` for 120 seconds, has a 100,000-entry cap, and rejects new messages when full. | Cache state is local to one process and is lost on restart. |
+| Simulator claiming LIVE | Simulator source is classified as SIMULATED even with a valid signature; the publisher also forces the simulator source and strips auth fields. | Prevents LIVE classification in the checked-in application/simulator path; it does not prevent an attacker from causing SIMULATED status. |
+| Signature equality timing | `hmac.compare_digest` compares the expected and supplied digest. | Does not address timing or side channels elsewhere in the service. |
 
-## Out of scope and required deployment controls
+Backend tests exercise wrong keys, tampered payloads, missing signed fields,
+replayed nonces, expired timestamps, forged hardware labels, simulator
+classification, and the in-process OFFLINE → SIMULATED → LIVE → OFFLINE path.
+They do not exercise a live broker or hardware.
 
-This prototype does not implement device enrollment, secure key provisioning,
-rotation/revocation, durable replay storage, transport authentication,
-per-device authorization policies, rate limiting, broker ACL validation,
-secret redaction across infrastructure logs, or operational incident
-response. HMAC does not encrypt data or authenticate the physical sensor.
-Deployment still requires TLS, broker ACLs, protected secret storage, clock
-synchronization, durable replay handling, monitoring, recovery procedures,
-and an environment-specific security assessment.
+## Not covered
 
-## Test evidence and classification
+- **Physical identity or sensor truth:** possession of a configured key does
+  not prove that a sender is an ESP32, that a sensor is calibrated, or that a
+  reading is physically accurate.
+- **Secret lifecycle:** enrollment, protected provisioning, rotation,
+  revocation, hardware-backed storage, and recovery after key compromise are
+  not implemented.
+- **Cross-process or durable replay protection:** each worker has its own
+  volatile nonce cache. Restarts and multiple workers do not share replay
+  state. The timestamp window limits stale reuse but is not a durable replay
+  database.
+- **Transport security:** HMAC does not encrypt traffic. TLS, broker ACLs,
+  REST access control, and secure secret delivery are deployment
+  responsibilities and have not been verified here.
+- **Availability:** there is no request or broker rate limiting, resource
+  quota, or denial-of-service protection. The nonce-cache cap bounds that
+  cache, but fail-closed behavior can reject legitimate telemetry when full.
+- **Clock trust, authorization policy, and operational response:** clock
+  synchronization, node-to-zone authorization, audit retention, alerting,
+  incident response, and recovery are not established by these checks.
+- **End-to-end deployment:** Docker/MQTT/database/dashboard integration and
+  physical hardware were not run as part of this verification.
 
-Backend tests cover wrong keys, missing signatures, replayed nonces, expired
-timestamps, forged hardware source labels, simulator classification, and the
-OFFLINE → SIMULATED → LIVE → OFFLINE status path. These are in-process
-software tests; the Docker/MQTT/broker chain and physical hardware were not
-run or validated. Cryptographic message integrity is mitigated under the
-configured-key assumptions; durable replay defense, enrollment, key lifecycle,
-availability controls, and physical identity remain unresolved or external.
+Do not treat this implementation as a production security boundary or as
+evidence of mine-safety capability.
