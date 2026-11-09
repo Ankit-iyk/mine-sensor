@@ -19,7 +19,7 @@ Date: 2026-10-27. This is an internal adversarial review, not external peer revi
 
 ## ML reviewer conclusion
 
-The registered simulated results are mixed, and code-fixed thresholds do not equalize false-alarm operating points. Per-seed analysis is preferable to row-wise pseudo-replication, but results remain tied to a programmed data generator. No broad detector superiority conclusion is supported. The nuisance endpoint defect materially limits any claim about nuisance rejection.
+The registered simulated results are mixed, and code-fixed thresholds do not equalize false-alarm operating points. Per-seed analysis is preferable to row-wise pseudo-replication, but results remain tied to a programmed data generator. No broad detector superiority conclusion is supported. No nuisance-alarm rejection conclusion is supported because the nuisance endpoint is a shared baseline-drift control, not a per-scenario measurement.
 
 ## Measurement and simulation reviewer conclusion
 
@@ -31,4 +31,4 @@ Model/mock mode is more observable and the unauthenticated source downgrade is u
 
 ## Publication reviewer conclusion
 
-The current artifacts support a reproducible simulation benchmark report, not field validation or a novel deployed method. A publication submission needs verified related work, a corrected separately versioned nuisance analysis, stronger calibrated comparison, code and artifact audit, and external review. Authorship and rights need owner verification before submission.
+The current artifacts support a reproducible simulation benchmark report, not field validation or a novel deployed method. A publication submission needs verified related work, a separately frozen and correctly scoped nuisance analysis, stronger calibrated comparison, code and artifact audit, and external review. Authorship and rights need owner verification before submission.

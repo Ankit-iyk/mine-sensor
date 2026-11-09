@@ -1,11 +1,11 @@
 # SUBSENSE
 
-SUBSENSE is a predictive mine-subsidence monitoring research prototype that
+SUBSENSE is a simulated mine-subsidence monitoring research prototype that
 collects sensor or simulator telemetry, extracts backend features, and
 combines anomaly detection with risk assessment and alerts. It is not a
 certified mine-safety system.
 
-> **On tilt-only drift a simple z-score is competitive or better; the forest's measured benefit is nuisance-alarm rejection.**
+> **Frozen-protocol simulation results show simple baselines are competitive on tilt-only cases; the integrated alert rule suppresses some non-tilt anomalies.**
 
 ## Status
 
@@ -51,25 +51,25 @@ if the model is missing or cannot be loaded.
 
 ## Results
 
-The reproducible evaluation in [docs/evaluation/results.md](docs/evaluation/results.md)
-compares methods on the same backend feature pipeline. The latest report uses
-12 test seeds per scenario and noise set; the learned methods were trained on
-event-free nominal, baseline-drift nuisance, and shifted-noise examples using
-disjoint seeds. Fair Isolation Forest comparisons use the same persistence
-and spatial wrapper for the full system and the baseline-deviation-only
-counterfactual.
-
-Results are simulation-only and the method winners vary by scenario. The
-generated report includes every scenario/noise combination, 95% confidence
-intervals, and z-score comparisons with `current_system_spatial`. See the
-generated CSV and report for the measured values.
+The frozen simulation benchmark and its analysis are in
+[docs/evaluation/confirmatory_v1/results.csv](docs/evaluation/confirmatory_v1/results.csv)
+and [docs/evaluation/CONFIRMATORY_ANALYSIS.md](docs/evaluation/CONFIRMATORY_ANALYSIS.md).
+These artifacts compare code-defined methods across the registered scenarios.
+The raw Isolation Forest flags some coded non-tilt scenarios, while the
+integrated system suppresses many such flags when both tilt and baseline
+deviation remain below its alert threshold. Results are specific to the
+simulated feature distributions; they do not establish hardware or field
+performance. The nuisance-rate endpoint is copied from a shared baseline-drift
+control and cannot support per-scenario nuisance-alarm conclusions.
 
 ## Known limitations
 
 - All results are from simulation; no hardware recording was used.
+- The integrated system's state logic suppresses events that lack tilt change (see 1b); the forest alone detects some of them. A fix would require a new frozen protocol (v2) and is future work.
 - Results do not establish field performance. Detector measurements and their
-  confidence intervals are in [docs/evaluation/results.csv](docs/evaluation/results.csv)
-  and [docs/evaluation/results.md](docs/evaluation/results.md).
+  confidence intervals are in
+  [docs/evaluation/confirmatory_v1/results.csv](docs/evaluation/confirmatory_v1/results.csv)
+  and [docs/evaluation/CONFIRMATORY_ANALYSIS.md](docs/evaluation/CONFIRMATORY_ANALYSIS.md).
 - Vibration and stuck-sensor results are from specialized evaluation baselines,
   not improvements to production detector behavior.
 - The final gradual-tilt risk is WARNING, not DANGER.

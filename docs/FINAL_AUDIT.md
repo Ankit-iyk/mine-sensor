@@ -133,7 +133,7 @@ Before scores are reconstructed from the inspected baseline evidence, not from a
 - Phase 2 froze protocol SHA-256 `2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58`, added controlled simulated scenarios and paired statistics, and completed the disjoint 30-seed confirmatory run.
 - Results do not show a universal winner. Simple baselines outperform the current spatial system on several coded tilt scenarios; the forest performs strongly for selected vibration signatures but poorly for acceleration-only events. The no-temporal ablation is identical on gradual tilt, although the targeted test shows the inference paths can diverge on a designed sequence.
 - The generated nuisance false-alarm metric repeats the shared baseline-drift control episode across scenario rows. Preserve that result but do not cite it as a per-scenario nuisance rate. See [`evaluation/CONFIRMATORY_ANALYSIS.md`](evaluation/CONFIRMATORY_ANALYSIS.md).
-- Nothing here establishes real-mine predictive capability, hardware accuracy, safety benefit, or prevention of incidents.
+- Nothing here establishes forecasting performance, real-mine performance, hardware accuracy, safety benefit, or prevention of incidents.
 
 ## Verification record
 

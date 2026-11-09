@@ -1014,7 +1014,10 @@ def _write_markdown(
             "averages detected events only; event recall counts "
             "missed events in its denominator. PR-AUC is average precision. "
             "An `ANOMALOUS` current-system state counts as an alert; `MICRO_ANOMALY` does not. "
-            "False alarms are rising edges per summed node-hour on the normal and nuisance controls.\n\n"
+            "False alarms are rising edges per summed node-hour on the normal and nuisance controls. "
+            "The nuisance endpoint is measured on shared baseline-drift controls and copied into "
+            "scenario rows; it is not scenario-specific and must not be used for per-scenario "
+            "nuisance rankings or rejection claims.\n\n"
         )
         stream.write(
             "The shift set independently adds ±0.12° tilt noise, ±0.06 m/s² acceleration noise, "
@@ -1103,8 +1106,8 @@ def _write_markdown(
         )
         stream.write("\n## Where each method wins\n\n")
         stream.write(
-            "Winners are selected by highest mean F1 and lowest mean nuisance false alarms "
-            "per hour among the 15 ordinary methods; exact mean ties are all reported. "
+            "Winners are selected by highest mean F1 among the 15 ordinary methods; "
+            "exact mean ties are all reported. "
             "The comparison status is for `baseline_z_score` relative to "
             "`current_system_spatial`; overlapping 95% confidence intervals are labelled "
             "`tied` as a descriptive rule, not a significance test.\n\n"
@@ -1217,8 +1220,8 @@ def _write_best_method_table(stream: Any, rows: list[dict[str, Any]]) -> None:
 
 def _write_isolation_forest_value_table(stream: Any, rows: list[dict[str, Any]]) -> None:
     stream.write(
-        "| noise_model | scenario | no-forest F1 (95% CI) | full-system F1 (95% CI) | paired ΔF1 (95% CI) | paired Δevent recall (95% CI) | paired Δnormal false alarms/hour (95% CI) | paired Δnuisance false alarms/hour (95% CI) |\n"
-        "|---|---|---|---|---|---|---|---|\n"
+        "| noise_model | scenario | no-forest F1 (95% CI) | full-system F1 (95% CI) | paired ΔF1 (95% CI) | paired Δevent recall (95% CI) | paired Δnormal false alarms/hour (95% CI) |\n"
+        "|---|---|---|---|---|---|---|\n"
     )
     for noise_model in ("simulator", "distribution_shift"):
         scenarios = sorted({row["scenario"] for row in rows if row["noise_model"] == noise_model})
@@ -1234,17 +1237,15 @@ def _write_isolation_forest_value_table(stream: Any, rows: list[dict[str, Any]])
                 f"{_format_value(current['f1_mean'], current['f1_ci95_low'], current['f1_ci95_high'])} | "
                 f"{_format_value(delta['f1_mean'], delta['f1_ci95_low'], delta['f1_ci95_high'])} | "
                 f"{_format_value(delta['event_recall_mean'], delta['event_recall_ci95_low'], delta['event_recall_ci95_high'])} | "
-                f"{_format_value(delta['false_alarms_normal_per_hour_mean'], delta['false_alarms_normal_per_hour_ci95_low'], delta['false_alarms_normal_per_hour_ci95_high'])} | "
-                f"{_format_value(delta['false_alarms_nuisance_per_hour_mean'], delta['false_alarms_nuisance_per_hour_ci95_low'], delta['false_alarms_nuisance_per_hour_ci95_high'])} |\n"
+                f"{_format_value(delta['false_alarms_normal_per_hour_mean'], delta['false_alarms_normal_per_hour_ci95_low'], delta['false_alarms_normal_per_hour_ci95_high'])} |\n"
             )
 
 
 def _write_scenario_winners(stream: Any, rows: list[dict[str, Any]]) -> None:
     stream.write(
         "| noise_model | scenario | best F1 method(s), mean [95% CI] | "
-        "fewest nuisance false alarms/hour method(s), mean [95% CI] | "
-        "baseline_z_score vs current_system_spatial: F1 | nuisance false alarms |\n"
-        "|---|---|---|---|---|---|\n"
+        "baseline_z_score vs current_system_spatial: F1 |\n"
+        "|---|---|---|---|\n"
     )
     groups = sorted({
         (row["noise_model"], row["scenario"])
@@ -1262,34 +1263,17 @@ def _write_scenario_winners(stream: Any, rows: list[dict[str, Any]]) -> None:
             row for row in candidates
             if math.isfinite(float(row["f1_mean"]))
         ]
-        nuisance_candidates = [
-            row for row in candidates
-            if math.isfinite(float(row["false_alarms_nuisance_per_hour_mean"]))
-        ]
-        if not f1_candidates or not nuisance_candidates:
-            raise ValueError(f"results lack finite winner metrics for {noise_model}/{scenario}")
+        if not f1_candidates:
+            raise ValueError(f"results lack finite F1 metrics for {noise_model}/{scenario}")
 
         best_f1 = max(float(row["f1_mean"]) for row in f1_candidates)
         best_f1_rows = [
             row for row in f1_candidates
             if float(row["f1_mean"]) == best_f1
         ]
-        fewest_nuisance = min(
-            float(row["false_alarms_nuisance_per_hour_mean"])
-            for row in nuisance_candidates
-        )
-        fewest_nuisance_rows = [
-            row for row in nuisance_candidates
-            if float(row["false_alarms_nuisance_per_hour_mean"]) == fewest_nuisance
-        ]
         f1_winners = "; ".join(
             f"`{row['method']}` {_format_value(row['f1_mean'], row['f1_ci95_low'], row['f1_ci95_high'])}"
             for row in best_f1_rows
-        )
-        nuisance_winners = "; ".join(
-            f"`{row['method']}` "
-            f"{_format_value(row['false_alarms_nuisance_per_hour_mean'], row['false_alarms_nuisance_per_hour_ci95_low'], row['false_alarms_nuisance_per_hour_ci95_high'])}"
-            for row in fewest_nuisance_rows
         )
         z_score = _find_result(rows, noise_model, scenario, "baseline_z_score")
         current = _find_result(rows, noise_model, scenario, "current_system_spatial")
@@ -1298,12 +1282,8 @@ def _write_scenario_winners(stream: Any, rows: list[dict[str, Any]]) -> None:
                 f"results lack z-score/current-system comparison rows for {noise_model}/{scenario}"
             )
         f1_comparison = _compare_confidence_intervals(z_score, current, "f1", lower_is_better=False)
-        nuisance_comparison = _compare_confidence_intervals(
-            z_score, current, "false_alarms_nuisance_per_hour", lower_is_better=True
-        )
         stream.write(
-            f"| {noise_model} | {scenario} | {f1_winners} | {nuisance_winners} | "
-            f"{f1_comparison} | {nuisance_comparison} |\n"
+            f"| {noise_model} | {scenario} | {f1_winners} | {f1_comparison} |\n"
         )
 
 
@@ -1329,38 +1309,25 @@ def _compare_confidence_intervals(
 
 
 def _write_verified_claims(stream: Any, rows: list[dict[str, Any]]) -> None:
-    z_score = _find_result(rows, "simulator", "gradual_tilt", "baseline_z_score")
-    current = _find_result(rows, "simulator", "gradual_tilt", "current_system")
     full = _find_result(rows, "simulator", "gradual_tilt", "current_system_spatial")
     no_persistence = _find_result(
         rows, "simulator", "gradual_tilt", "ablation_no_temporal_persistence"
     )
-    if any(row is None for row in (z_score, current, full, no_persistence)):
+    if any(row is None for row in (full, no_persistence)):
         raise ValueError("results are missing a row required for verified gradual-tilt comparisons")
 
     stream.write(
-        "These comparisons are read from the generated CSV. False-alarm figures "
-        "are per summed node-hour; intervals are 95% CIs across seeds.\n\n"
-        "| Comparison | Method A | Method B | Interpretation |\n"
-        "|---|---|---|---|\n"
-    )
-    stream.write(
-        "| Z-score vs current-system false alarms | "
-        f"baseline_z_score: normal {_format_value(z_score['false_alarms_normal_per_hour_mean'], z_score['false_alarms_normal_per_hour_ci95_low'], z_score['false_alarms_normal_per_hour_ci95_high'])}; "
-        f"nuisance {_format_value(z_score['false_alarms_nuisance_per_hour_mean'], z_score['false_alarms_nuisance_per_hour_ci95_low'], z_score['false_alarms_nuisance_per_hour_ci95_high'])} | "
-        f"current_system: normal {_format_value(current['false_alarms_normal_per_hour_mean'], current['false_alarms_normal_per_hour_ci95_low'], current['false_alarms_normal_per_hour_ci95_high'])}; "
-        f"nuisance {_format_value(current['false_alarms_nuisance_per_hour_mean'], current['false_alarms_nuisance_per_hour_ci95_low'], current['false_alarms_nuisance_per_hour_ci95_high'])} | "
-        "Normal false-alarm rates are tied; compare nuisance rates as shown (the z-score is lower in this run). |\n"
+        "Event metrics below are read from the generated CSV. The nuisance endpoint "
+        "is excluded because its per-scenario scope is invalid.\n\n"
+        "| Comparison | Method A | Method B |\n"
+        "|---|---|---|\n"
     )
     stream.write(
         "| Full system vs no temporal persistence | "
         f"current_system_spatial: F1 {_format_value(full['f1_mean'], full['f1_ci95_low'], full['f1_ci95_high'])}; "
-        f"event recall {_format_value(full['event_recall_mean'], full['event_recall_ci95_low'], full['event_recall_ci95_high'])}; "
-        f"nuisance alarms/hour {_format_value(full['false_alarms_nuisance_per_hour_mean'], full['false_alarms_nuisance_per_hour_ci95_low'], full['false_alarms_nuisance_per_hour_ci95_high'])} | "
+        f"event recall {_format_value(full['event_recall_mean'], full['event_recall_ci95_low'], full['event_recall_ci95_high'])} | "
         f"ablation_no_temporal_persistence: F1 {_format_value(no_persistence['f1_mean'], no_persistence['f1_ci95_low'], no_persistence['f1_ci95_high'])}; "
-        f"event recall {_format_value(no_persistence['event_recall_mean'], no_persistence['event_recall_ci95_low'], no_persistence['event_recall_ci95_high'])}; "
-        f"nuisance alarms/hour {_format_value(no_persistence['false_alarms_nuisance_per_hour_mean'], no_persistence['false_alarms_nuisance_per_hour_ci95_low'], no_persistence['false_alarms_nuisance_per_hour_ci95_high'])} | "
-        "Removing persistence raised mean F1 but also raised nuisance false alarms; event recall tied. |\n"
+        f"event recall {_format_value(no_persistence['event_recall_mean'], no_persistence['event_recall_ci95_low'], no_persistence['event_recall_ci95_high'])} |\n"
     )
     stream.write(
         "\nThe ablation deliberately returns raw current-system alerts without the "
@@ -1392,7 +1359,7 @@ def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> N
         f"Intervals are 95% CIs across {int(paired_delta['f1_n'])} paired test seeds. "
         "`forest_added_value` is the paired full-system-minus-baseline delta, "
         "not an absolute detector result.\n\n"
-        "| method | nuisance false alarms/hour (95% CI) | F1 (95% CI) |\n"
+        "| method | F1 (95% CI) |\n"
         "|---|---|---|\n"
     )
     for method in methods:
@@ -1400,7 +1367,6 @@ def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> N
         assert row is not None
         stream.write(
             f"| {method} | "
-            f"{_format_value(row['false_alarms_nuisance_per_hour_mean'], row['false_alarms_nuisance_per_hour_ci95_low'], row['false_alarms_nuisance_per_hour_ci95_high'])} | "
             f"{_format_value(row['f1_mean'], row['f1_ci95_low'], row['f1_ci95_high'])} |\n"
         )
     stream.write(
@@ -1412,11 +1378,8 @@ def _write_gradual_tilt_comparison(stream: Any, rows: list[dict[str, Any]]) -> N
 
 def _write_evaluation_limitations(stream: Any, rows: list[dict[str, Any]]) -> None:
     delta = _find_result(rows, "simulator", "gradual_tilt", "forest_added_value")
-    baseline_z = _find_result(rows, "simulator", "gradual_tilt", "baseline_z_score")
-    current = _find_result(rows, "simulator", "gradual_tilt", "current_system")
-    if any(row is None for row in (delta, baseline_z, current)):
+    if delta is None:
         raise ValueError("results are missing rows for the evaluation limitations")
-    assert delta is not None and baseline_z is not None and current is not None
     stream.write(
         "- These results use simulated data only.\n"
         "- No hardware recording has been evaluated.\n"
@@ -1425,9 +1388,7 @@ def _write_evaluation_limitations(stream: Any, rows: list[dict[str, Any]]) -> No
         "positive direction. Here gradual-tilt ΔF1 is "
         f"{_format_value(delta['f1_mean'], delta['f1_ci95_low'], delta['f1_ci95_high'])}, "
         "which is significantly negative by this interval.\n"
-        "- On simulator gradual tilt, z-score nuisance alarms are "
-        f"{_format_value(baseline_z['false_alarms_nuisance_per_hour_mean'], baseline_z['false_alarms_nuisance_per_hour_ci95_low'], baseline_z['false_alarms_nuisance_per_hour_ci95_high'])}/hour versus "
-        f"{_format_value(current['false_alarms_nuisance_per_hour_mean'], current['false_alarms_nuisance_per_hour_ci95_low'], current['false_alarms_nuisance_per_hour_ci95_high'])}/hour for current_system; z-score is lower on this metric.\n"
+        "- The nuisance-rate metric is copied from a shared baseline-drift control and cannot support per-scenario nuisance conclusions or rejection claims.\n"
     )
 
 

@@ -37,7 +37,7 @@ Status date: 2026-11-02 (Asia/Calcutta). Branch: `ai-ml-development`.
 | PARTIAL | In-process API telemetry/status flow verified through OFFLINE → SIMULATED → LIVE → OFFLINE. Database persistence and detector processing were stubbed; Docker/MQTT end-to-end path, dashboard browser status, manuscript build, and clean-checkout reproduction remain unverified. | `backend/tests/test_telemetry_mode.py`, `scripts/run_e2e_inprocess.py`, `docs/evaluation/e2e_run.md`. |
 | PARTIAL | REST/MQTT hardware ingestion verifies per-node HMAC-SHA256 payloads, timestamp freshness, and in-process nonce replay; durable replay state, enrollment, key lifecycle, and rate limits remain absent. | `backend/app/ingestion/device_auth.py`, `message_handler.py`, `api/routes/telemetry.py`, `source_tracker.py`, backend tests. |
 | VERIFIED | A PowerShell reproduction script, GitHub Actions workflow, authorship note, and telemetry threat model are present. | `scripts/reproduce.ps1`, `.github/workflows/tests.yml`, `docs/AUTHORSHIP.md`, `docs/THREAT_MODEL.md`. |
-| REQUIRES EXTERNAL VALIDATION | Physical sensor data, hardware identity/measurement validity, real-mine predictive performance, operational safety, independent review, and external adoption. |
+| REQUIRES EXTERNAL VALIDATION | Physical sensor data, hardware identity/measurement validity, forecasting and real-mine performance, operational safety, independent review, and external adoption. |
 
 ## Phase gate
 

@@ -1,0 +1,97 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\title{When Do Simple Baselines Suffice?\\
+\large A Frozen-Protocol Simulation Benchmark}
+\author{Author list and affiliations require owner verification}
+\date{Draft --- not for submission}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper reports a frozen-protocol simulation benchmark of coded tilt,
+vibration, acceleration, and multi-node telemetry scenarios. The benchmark
+compares simple statistical detectors, unsupervised methods, and an integrated
+system using paired seed-level tests across 16 registered scenarios. Its
+contributions are a reproducible protocol and paired comparisons, results for
+tilt-only conditions, and an identified non-tilt failure mode: the integrated
+system gates Isolation Forest positives on tilt or baseline deviation, while
+the standalone forest flags some coded non-tilt events. These findings describe
+the implemented methods on simulated feature distributions only. No physical
+recording, hardware validation, operational trial, or forecasting evaluation
+was performed, and the benchmark does not establish a safety benefit.
+\end{abstract}
+
+\section{Question and contributions}
+The question is when simple baselines suffice within the frozen simulator
+protocol, and how the integrated decision rule behaves when an event does not
+change tilt. The contributions are:
+\begin{enumerate}
+  \item A versioned simulation protocol with paired tests across the registered
+  16-scenario matrix.
+  \item Tilt-only results comparing the current system with simple baselines,
+  reported at their fixed code-defined operating points.
+  \item A non-tilt failure mode in which the standalone Isolation Forest can
+  identify coded feature anomalies but the integrated alert rule suppresses
+  them unless a tilt-deviation condition is met.
+\end{enumerate}
+The benchmark does not claim a new anomaly-detection algorithm or general
+superiority over the evaluated baselines.
+
+\section{Related Work}
+\textbf{AUTHOR TO COMPLETE: only cite sources read by the author.}
+
+\section{System and simulated data}
+The compared methods operate on generated feature sequences from the repository
+simulator. The frozen v1 results, raw seed-level metrics, paired comparisons,
+and provenance are stored under
+\texttt{docs/evaluation/confirmatory\_v1/}. Scenario construction and analysis
+decisions are specified in \texttt{docs/evaluation/PROTOCOL.md}; the
+interpretation is in \texttt{docs/evaluation/CONFIRMATORY\_ANALYSIS.md}.
+No physical sensor recording is included.
+
+\section{Methods}
+The frozen protocol compares fixed code-defined operating points and treats a
+seed episode as the paired analysis unit. It specifies scenarios, partitions,
+event matching, confidence intervals, paired tests, and multiplicity
+correction. The methods were not calibrated to a shared false-alarm constraint,
+so ranking them does not establish superiority at a common operating point.
+The evaluation's \texttt{current\_system} keeps an Isolation Forest positive
+only when tilt deviation or baseline deviation reaches its alert threshold;
+the standalone \texttt{isolation\_forest} method does not apply that gate.
+
+\section{Results}
+The existing confirmatory CSV reports mixed outcomes across the simulated
+conditions. On the coded tilt-only cases, simple baselines are competitive
+with or outperform the integrated method on event metrics. On selected
+non-tilt cases, the standalone forest detects events that the integrated
+decision rule often suppresses. The scenario-specific nuisance false-alarm
+field is copied from a shared baseline-drift control and is not interpreted as
+a per-scenario measurement. No nuisance-alarm rejection conclusion is drawn.
+All result claims and their selectors are listed in
+\texttt{claims\_ledger.csv}.
+
+\section{Limitations}
+All results are from simulation; no physical sensor recording was used. The
+scenario distributions are code-defined and are not calibrated to physical
+sensor measurements. The integrated system's tilt gate causes missed coded
+non-tilt events; changing that behavior requires a new frozen protocol and
+future evaluation. The nuisance-rate endpoint cannot support per-scenario
+nuisance claims, and thresholds were not calibrated to a shared false-alarm
+budget. The benchmark includes no hardware validation, physical deployment,
+forecasting evaluation, operational safety assessment, or independent
+replication.
+
+\section{Reproducibility and availability}
+The protocol hash, environment metadata, raw seed-level metrics, aggregates,
+paired tests, unsupported cases, and generated figures are stored under
+\texttt{docs/evaluation/confirmatory\_v1/}. Test commands and known
+environmental limitations are recorded in \texttt{docs/FINAL\_AUDIT.md}. This
+draft is not submission-ready.
+
+\section{Authorship}
+Author names, affiliations, contributions, permissions, and acknowledgments
+require owner confirmation.
+
+\end{document}

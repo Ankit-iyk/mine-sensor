@@ -39,7 +39,7 @@ These rows establish behavior under the coded distributions, not sensor validity
 
 ## Paired comparisons and ablations
 
-In gradual tilt, `current_system_spatial - baseline_deviation_only_spatial` has mean F1 difference -0.0222 (95% paired bootstrap CI [-0.0258, -0.0187], Holm p=0.0050), with equal event recall. The spatial baseline has higher F1 and a shorter reported delay in this simulator episode. In regional multi-node events, the same comparison has F1 difference -0.0575 (CI [-0.0609, -0.0541], Holm p=0.0050), again with equal event recall. Thus these registered results do not show a consistent advantage for the proposed spatial system over a simple spatial deviation baseline.
+In gradual tilt, `current_system_spatial - baseline_deviation_only_spatial` has mean F1 difference -0.0222 (95% paired bootstrap CI [-0.0258, -0.0187], Holm p <= 0.005), with equal event recall. The spatial baseline has higher F1 and a shorter reported delay in this simulator episode. In regional multi-node events, the same comparison has F1 difference -0.0575 (CI [-0.0609, -0.0541], Holm p <= 0.005), again with equal event recall. Thus these registered results do not show a consistent advantage for the proposed spatial system over a simple spatial deviation baseline.
 
 For the temporal ablation, the full and no-temporal-persistence methods remain identical in the gradual-tilt evaluation rows. The targeted path test proves that the two inference paths can differ on a designed sequence, but these scenarios do not show an incremental temporal contribution. This is a negative result, not evidence of equivalence outside the tested simulator conditions.
 
