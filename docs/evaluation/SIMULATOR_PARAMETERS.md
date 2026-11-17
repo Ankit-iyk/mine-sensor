@@ -13,8 +13,8 @@ The registered experiments use `ai_engine/evaluation/datasets.py` (`generate_epi
 | Nominal interval | 1.0 s | `datasets.py` | Nominal cadence; ASSUMPTION |
 | Tilt noise | Gaussian σ=0.05° | `simulator/simulator/node.py` (`NOISE_TILT`) | Independent additive noise in the simulator; not measured device noise |
 | Acceleration noise | Gaussian σ=0.02 m/s² (code constant; feature generator may add channel disturbance) | `node.py` (`NOISE_ACCEL`); `datasets.py` | Simulation assumption; not datasheet accuracy or calibrated noise |
-| Baseline tilt | 1.0° x, 0.8° y for evaluation nodes | `datasets.py` | Fixed synthetic starting orientation; ASSUMPTION |
-| Vibration background pulse | probability 0.02 per reading; integer background/pulse generation in `_noise_vibration` | `node.py` | Synthetic nuisance distribution; not measured vibration spectrum |
+| Baseline tilt | 1.0° x, 0.8° y for evaluation nodes | `datasets.py` | Fixed simulated starting orientation; ASSUMPTION |
+| Vibration background pulse | probability 0.02 per reading; integer background/pulse generation in `_noise_vibration` | `node.py` | Simulated nuisance distribution; not measured vibration spectrum |
 | Shifted tilt noise | added Gaussian σ=0.12° per axis | `datasets.py` (`_apply_shifted_noise`) | Declared distribution shift; ASSUMPTION |
 | Shifted acceleration noise | added Gaussian σ=0.06 m/s² per axis | `datasets.py` | Declared distribution shift; ASSUMPTION |
 | Shifted cadence | uniform 0.8–1.2 s | `datasets.py` | Sampling shift; ASSUMPTION |
@@ -24,7 +24,7 @@ The registered experiments use `ai_engine/evaluation/datasets.py` (`generate_epi
 | Step tilt | onset and size in `_apply_scenario` | `datasets.py` | Programmed event; ASSUMPTION |
 | Persistent offset | fixed offset in scenario helper | `datasets.py` | Programmed event; ASSUMPTION |
 | Correlated drift | same-time multi-node drift | `datasets.py` | Dependence is stipulated to test spatial behavior; not estimated from mine data |
-| Impulse / phone-like vibration / mixed events | scripted channel changes in scenario helpers | `datasets.py` | Synthetic nuisance signatures; no physical vibration recordings |
+| Impulse / phone-like vibration / mixed events | scripted channel changes in scenario helpers | `datasets.py` | Simulated nuisance signatures; no physical vibration recordings |
 
 The above episode settings and code locations are traceable, but the currently generated `confirmatory_v1` run has severity 1.0 only. A severity/noise sensitivity sweep has **NOT RUN** and there is no evidence for a minimum detectable physical tilt. Simulator `SensorNode` random functions use Python's process-global `random` in parts of the original simulator; the evaluation wrapper's seeding and deterministic tests are documented in `PHASE2_REPORT.md` and `test_evaluation_datasets.py`.
 

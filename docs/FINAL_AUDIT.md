@@ -1,8 +1,22 @@
 # SUBSENSE final audit
 
-Updated: 2026-11-09. Branch: `ai-ml-development`. This section reports the
+Updated: 2026-11-15. Branch: `ai-ml-development`. This section reports the
 current state; the explicitly labeled historical audit below is retained as
 an older record and is not the current verification status.
+
+## Current characterization and limitations
+
+This repository is a simulation-only, frozen-protocol technical report and
+negative-result case study. The nuisance-alarm metric is invalid for
+scenario-level inference, and all nuisance-alarm performance claims are
+withdrawn. The integrated system suppresses Isolation Forest flags when both
+tilt and baseline deviation stay below the alert threshold, so some non-tilt
+events are missed. There has been no hardware recording, bench validation, or
+field validation. No forecasting evaluation or forecasting claim exists.
+
+The simulator's stationary tilt noise is `Gaussian σ=0.05°`. Cifaldi et al.
+(2025) report 0.1–0.2° field fluctuation for a different sensor and mounting;
+that comparison is a scale warning, not a calibration.
 
 ## Supplemental read-only checks (2026-11-09)
 
@@ -120,7 +134,7 @@ confirmatory `paired_tests.csv` contains Holm-adjusted values of
 | # | Status | Evidence |
 |---|---|---|
 | 1. Read-only checks | DONE | Existing CSV transcribed and verified row-for-row; source trace and metric limitation recorded above. No evaluation run was performed. |
-| 2. Honest docs and paper | DONE | README and paper are simulation-scoped; nuisance-rate benefit claims were removed or qualified; Related Work remains an explicit author placeholder. |
+| 2. Honest docs and paper | DONE | README and paper are simulation-scoped; all nuisance-alarm performance claims are withdrawn because the metric is invalid; Related Work remains an explicit author placeholder. |
 | 3. Hygiene | DONE | Owner-provided contribution roles and AI-assistance disclosure are recorded; CI workflow and README status columns were verified; paper validator passed. |
 | 4. Telemetry authentication | DONE | Delimited per-node HMAC, timestamp window, bounded nonce cache, constant-time comparison, and requested negative/simulator tests are implemented. |
 | 5. Final audit | DONE | This audit and `PROJECT_STATUS.md` reflect current verified state; both suites and the paper claim validator were rerun for the final update. |
@@ -154,7 +168,7 @@ Before scores are reconstructed from the inspected baseline evidence, not from a
 
 ## Historical baseline findings (2026-10-27)
 
-- The checkout already had an AI/backend/dashboard pipeline, model artifact, historical evaluation, synthetic placeholder CSVs, and a dirty user-authored `run_all.py` change.
+- The checkout already had an AI/backend/dashboard pipeline, model artifact, historical evaluation, simulated CSVs, and a dirty user-authored `run_all.py` change.
 - Phase 0 recorded environment, tests, dataset coverage, dashboard build, model and evaluation state. The available sensor CSV has 38,700 rows and spans exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), not two hours.
 - Phase 1 made model/mock status observable, logged missing-model fallback, added score-semantics and temporal-path tests, and verified the documented unit/feature mapping. The telemetry source still does not have signed-message replay protection.
 - Phase 2 froze protocol SHA-256 `2dd1833ebd31c269ea1d720538900887cccbfb44a072b6b05c339e4dff91ea58`, added controlled simulated scenarios and paired statistics, and completed the disjoint 30-seed confirmatory run.

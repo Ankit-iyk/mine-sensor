@@ -15,7 +15,7 @@ Date: 2026-10-27. This is an internal adversarial review, not external peer revi
 | Docker/MQTT/dashboard chain is not proven end to end | Requires external/environment validation | Existing audit records Docker unavailable and broker path not established; dashboard production build alone is not end-to-end evidence |
 | No paper, verified novelty analysis, or independent review existed at baseline | Unresolved | Current package adds this critique, model/data provenance artifacts and a claim validator; no publication-level novelty claim is made |
 | Model provenance and external compatibility are incompletely verified | Mitigated, residual risk | Artifact hashes and runtime versions can be generated; clean environment compatibility is not proven |
-| The 38,700-row synthetic CSV spans only 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), which cannot support long-horizon false-alarm claims | Not fixable with current data | Report exposure and short duration honestly; no rule-of-three low-rate claim |
+| The 38,700-row simulated CSV spans only 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), which cannot support long-horizon false-alarm claims | Not fixable with current data | Report exposure and short duration honestly; no rule-of-three low-rate claim |
 
 ## ML reviewer conclusion
 

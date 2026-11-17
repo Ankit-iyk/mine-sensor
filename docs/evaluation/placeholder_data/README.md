@@ -1,6 +1,6 @@
-# Synthetic placeholder CSVs
+# Simulated CSV data
 
-`sensor_data.csv` and `event_log.csv` are **SYNTHETIC placeholders**, not measured recordings and not hardware-validated. The event-log notes also identify every listed event as synthetic placeholder data.
+`sensor_data.csv` and `event_log.csv` contain simulated data, not measured recordings and not hardware-validated. The event-log notes identify each listed event as simulated.
 
 The sensor samples are at 10 Hz with perfectly regular 0.1-second timestamps. These files exist only to test the CSV loader and evaluation workflow. Replace them with measured recordings before drawing conclusions about sensor performance.
 

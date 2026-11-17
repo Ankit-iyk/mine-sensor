@@ -1,6 +1,6 @@
 # SUBSENSE project status
 
-Status date: 2026-11-09. Branch: `ai-ml-development`.
+Status date: 2026-11-15. Branch: `ai-ml-development`.
 
 ## Verified state
 
@@ -26,7 +26,7 @@ Status date: 2026-11-09. Branch: `ai-ml-development`.
 - The README status table distinguishes Verified, Simulated only, and Untested.
 - The contributor roles in `docs/AUTHORSHIP.md` are project-owner-provided and
   use first names only. AI-assisted code generation is disclosed.
-- `sensor_data.csv` is synthetic placeholder data: 38,700 data rows over
+- `sensor_data.csv` contains simulated data: 38,700 data rows over
   3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds), not a hardware recording.
 
 ## Known failure and measurement limits
@@ -38,10 +38,16 @@ behavior is documented with code locations and existing confirmatory CSV rows
 in `docs/FINAL_AUDIT.md`. Correcting it requires a new frozen protocol; no
 evaluation was run for this update.
 
-The nuisance metric is measured on a shared baseline-drift control and copied
-into scenario summaries. Neither the README nor the revised paper uses it to
-claim nuisance-alarm rejection. The existing frozen result files and protocol
-were not edited.
+The nuisance-alarm metric is invalid for scenario-level inference, and all
+nuisance-alarm performance claims are withdrawn. The frozen result files and
+protocol were not edited.
+
+The project is a simulation-only, frozen-protocol technical report and
+negative-result case study. The integrated alert rule suppresses raw
+Isolation Forest flags when both tilt and baseline deviation remain below the
+alert threshold, so some non-tilt events are missed. No hardware recording,
+bench validation, or field validation exists. There is no forecasting
+evaluation or forecasting claim.
 
 ## Not verified or not run
 
@@ -55,5 +61,5 @@ were not edited.
 - There is no forecasting evaluation, mine trial, safety case, or independent
   external review.
 
-The system and all empirical claims remain research/simulation scoped. This
-repository does not establish operational mine-safety capability.
+The system and all empirical claims remain simulation-scoped. This repository
+does not establish operational mine-safety capability.

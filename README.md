@@ -5,13 +5,13 @@ collects sensor or simulator telemetry, extracts backend features, and
 combines anomaly detection with risk assessment and alerts. It is not a
 certified mine-safety system.
 
-> **Frozen-protocol simulation results show simple baselines are competitive on tilt-only cases; the integrated alert rule suppresses some non-tilt anomalies.**
+> **Frozen-protocol, simulation-only technical report and negative-result case study: the integrated alert rule suppresses some Isolation Forest flags and misses non-tilt events. Nuisance-alarm claims are withdrawn; there is no hardware, bench, field, or forecasting validation.**
 
 ## Status
 
 | Verified | Simulated only | Untested |
 |---|---|---|
-| AI-engine and backend automated test suites passed for the current change set | Detector evaluation and placeholder CSV data; the placeholder CSV contains 38,700 rows spanning 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds) | Docker/MQTT/database/dashboard chain |
+| AI-engine and backend automated test suites passed for the current change set | Detector evaluation and simulated CSV data; the simulated CSV contains 38,700 rows spanning 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds) | Docker/MQTT/database/dashboard chain |
 | In-process FastAPI behaviors covered by tests | Confirmatory detector outcomes in `docs/evaluation/confirmatory_v1/results.csv` (simulation only; nuisance-rate limitation documented) | Datasheet-grounded simulator, literature review, deployment pilot |
 
 ## Architecture
@@ -55,16 +55,18 @@ The frozen simulation benchmark and its analysis are in
 [docs/evaluation/confirmatory_v1/results.csv](docs/evaluation/confirmatory_v1/results.csv)
 and [docs/evaluation/CONFIRMATORY_ANALYSIS.md](docs/evaluation/CONFIRMATORY_ANALYSIS.md).
 These artifacts compare code-defined methods across the registered scenarios.
-The raw Isolation Forest flags some coded non-tilt scenarios, while the
-integrated system suppresses many such flags when both tilt and baseline
-deviation remain below its alert threshold. Results are specific to the
-simulated feature distributions; they do not establish hardware or field
-performance. The nuisance-rate endpoint is copied from a shared baseline-drift
-control and cannot support per-scenario nuisance-alarm conclusions.
+These readings are simulated, not measured. The raw Isolation Forest flags
+some coded non-tilt scenarios, while the integrated system suppresses those
+flags when both tilt and baseline deviation stay below the alert threshold;
+the resulting non-tilt events are missed. Results are specific to the frozen
+simulated feature distributions. The nuisance-alarm metric is invalid for
+scenario-level inference, so all nuisance-alarm performance claims are
+withdrawn.
 
 ## Known limitations
 
 - All results are from simulation; no hardware recording was used.
+- There has been no hardware, bench, or field validation. No forecasting evaluation or forecasting claim exists.
 - The integrated system's state logic suppresses events that lack tilt change (see 1b); the forest alone detects some of them. A fix would require a new frozen protocol (v2) and is future work.
 - Results do not establish field performance. Detector measurements and their
   confidence intervals are in

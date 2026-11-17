@@ -2,8 +2,8 @@
 
 All data used here is simulated. The only bundled sensor CSV is
 `docs/evaluation/placeholder_data/sensor_data.csv`: 38,700 data rows spanning
-exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds). It is synthetic
-placeholder data, not a hardware recording.
+exactly 3,869.9 seconds (1 hour, 4 minutes, 29.9 seconds). It contains
+simulated data, not a hardware recording.
 
 ## Regenerate the checked-in report
 

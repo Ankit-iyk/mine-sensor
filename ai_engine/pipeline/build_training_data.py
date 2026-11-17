@@ -1,6 +1,6 @@
 """
 Builds a normal-behaviour training dataset for Isolation Forest.
-Generates synthetic normal telemetry across multiple nodes, runs it through
+Generates simulated normal telemetry across multiple nodes, runs it through
 Module 1 (preprocessing) and Module 2 (feature extraction), and saves the
 resulting feature vectors as a CSV for training.
 """
@@ -45,7 +45,7 @@ def _preprocess_batch(raw_sequence: list) -> list:
 def build_normal_feature_dataset(node_ids=None, count_per_node=DEFAULT_COUNT_PER_NODE):
     """
     Returns a list of feature dicts (each tagged with node_id) built from
-    synthetic normal telemetry across the given nodes.
+    simulated normal telemetry across the given nodes.
     """
     if node_ids is None:
         node_ids = DEFAULT_NODES

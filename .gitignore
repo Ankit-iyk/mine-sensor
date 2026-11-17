@@ -87,3 +87,6 @@ tsconfig.tsbuildinfo
 .test-tmp/
 docs/evaluation/*.xml
 docs/evaluation/*_test_report.json
+/docs/evaluation/baseline_artifacts/
+/docs/evaluation/phase1_artifacts/
+/docs/evaluation/phase2_smoke/

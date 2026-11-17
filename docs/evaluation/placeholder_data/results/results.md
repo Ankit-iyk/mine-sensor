@@ -1,6 +1,6 @@
-# SYNTHETIC PLACEHOLDER DATA — evaluation only
+# SIMULATED DATA — evaluation only
 
-These outputs use synthetic placeholder data only. They are not measured recordings and are not hardware-validated. Models were fit only on the first 30 minutes of stationary samples, thresholds were calibrated on the following 15 minutes of stationary samples, and metrics use the remaining held-out period. The backend feature pipeline then processed the ordered input stream. This run exists to exercise the CSV loader and evaluation workflow.
+These outputs use simulated data only. They are not measured recordings and are not hardware-validated. Models were fit only on the first 30 minutes of stationary samples, thresholds were calibrated on the following 15 minutes of stationary samples, and metrics use the remaining held-out period. The backend feature pipeline then processed the ordered input stream. This run exists to exercise the CSV loader and evaluation workflow.
 
 - Sensor CSV: `docs\evaluation\placeholder_data\sensor_data.csv`
 - Event log: `docs\evaluation\placeholder_data\event_log.csv`
@@ -59,7 +59,7 @@ Each score threshold is selected from the empirical quantiles of the separate 15
 | current_system | 0.704 | 1.000 | 0.000 | 74 | 237.857 | 288.612 | 1.000 | 1.000 | 1.000 | not estimable (<3 h) |
 | current_system_spatial | 0.685 | 1.000 | 0.000 | 44 | 141.429 | 181.841 | 1.000 | 1.000 | 1.000 | not estimable (<3 h) |
 
-## Vibration channel response (synthetic events)
+## Vibration channel response (simulated events)
 
 The threshold comparison uses backend-normalized vibration intensity ≥0.35.
 
